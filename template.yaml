@@ -17,3 +17,10 @@ Resources:
       CodeUri: functions/vector-verify/
       Handler: handler.handler
       Runtime: python3.13
+
+  SearchTestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/search-test/
+      Handler: handler.handler
+      Runtime: python3.13
