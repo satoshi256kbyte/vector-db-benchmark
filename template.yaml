@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SAM build template (build only - deployment managed by CDK)
+
+Globals:
+  Function:
+    Timeout: 300
+    Runtime: python3.13
+    Architectures:
+      - x86_64
+
+Resources:
+  VectorVerifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/vector-verify/
+      Handler: handler.handler
+      Runtime: python3.13
