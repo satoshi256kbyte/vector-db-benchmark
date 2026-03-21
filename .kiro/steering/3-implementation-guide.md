@@ -220,6 +220,35 @@ test('DynamoDB table created', () => {
 
 参考: [CDK Testing](https://docs.aws.amazon.com/cdk/v2/guide/testing.html)
 
+### SAM Build ワークフロー
+
+Lambda 関数の依存ライブラリは `sam build` でビルドする。CDK の bundling は使用しない。
+
+#### デプロイ手順
+
+```bash
+# 1. Lambda 関数のビルド（Docker コンテナ内）
+sam build --use-container
+
+# 2. CDK デプロイ
+npx cdk deploy VectorDbBenchmarkStack
+```
+
+#### 仕組み
+
+- `template.yaml`（プロジェクトルート）にビルド対象の Lambda 関数を定義
+- `sam build --use-container` で Docker コンテナ内（x86_64 Linux）で依存ライブラリをビルド
+- ビルド出力は `.aws-sam/build/<FunctionName>/` に生成
+- CDK の `Code.fromAsset(".aws-sam/build/<FunctionName>")` でビルド成果物を参照
+
+#### Lambda 関数の追加
+
+新しい Lambda 関数を追加する場合:
+
+1. `functions/<function-name>/` にソースコードと `requirements.txt` を配置
+2. `template.yaml` の `Resources` にエントリを追加
+3. CDK コンストラクトで `Code.fromAsset(".aws-sam/build/<FunctionName>")` を参照
+
 ## セキュリティ
 
 ### API
