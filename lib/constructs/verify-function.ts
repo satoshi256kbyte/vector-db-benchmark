@@ -11,7 +11,8 @@ export interface VerifyFunctionConstructProps {
   lambdaSg: ec2.SecurityGroup;
   auroraCluster: rds.DatabaseCluster;
   auroraSecret: secretsmanager.ISecret;
-  opensearchCollectionEndpoint: string;
+  opensearchCollectionEndpoint?: string;
+  role?: iam.IRole;
 }
 
 export class VerifyFunctionConstruct extends Construct {
@@ -24,6 +25,19 @@ export class VerifyFunctionConstruct extends Construct {
   ) {
     super(scope, id);
 
+    const environment: Record<string, string> = {
+      AURORA_SECRET_ARN: props.auroraSecret.secretArn,
+      AURORA_CLUSTER_ENDPOINT:
+        props.auroraCluster.clusterEndpoint.hostname,
+      POWERTOOLS_SERVICE_NAME: "vector-verify",
+      POWERTOOLS_LOG_LEVEL: "INFO",
+    };
+
+    if (props.opensearchCollectionEndpoint) {
+      environment.OPENSEARCH_ENDPOINT =
+        props.opensearchCollectionEndpoint;
+    }
+
     this.function = new lambda.Function(this, "Function", {
       functionName: "awslab-dev-lambda-vector-verify",
       runtime: lambda.Runtime.PYTHON_3_13,
@@ -34,14 +48,8 @@ export class VerifyFunctionConstruct extends Construct {
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [props.lambdaSg],
-      environment: {
-        AURORA_SECRET_ARN: props.auroraSecret.secretArn,
-        AURORA_CLUSTER_ENDPOINT:
-          props.auroraCluster.clusterEndpoint.hostname,
-        OPENSEARCH_ENDPOINT: props.opensearchCollectionEndpoint,
-        POWERTOOLS_SERVICE_NAME: "vector-verify",
-        POWERTOOLS_LOG_LEVEL: "INFO",
-      },
+      ...(props.role ? { role: props.role as iam.Role } : {}),
+      environment,
     });
 
     // Grant Secrets Manager read access for Aurora credentials
