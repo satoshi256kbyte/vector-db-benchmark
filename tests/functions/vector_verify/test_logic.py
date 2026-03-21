@@ -1,8 +1,8 @@
 """ビジネスロジック (logic.py) のユニットテスト.
 
 generate_dummy_vectors のエッジケース、
-Aurora / OpenSearch 操作のモックテスト、
-run_aurora_verify / run_opensearch_verify の統合テストを含む。
+Aurora / OpenSearch / S3 Vectors 操作のモックテスト、
+run_aurora_verify / run_opensearch_verify / run_s3vectors_verify の統合テストを含む。
 """
 
 from __future__ import annotations
@@ -59,6 +59,9 @@ insert_opensearch_vectors = _logic.insert_opensearch_vectors
 search_opensearch_vectors = _logic.search_opensearch_vectors
 run_aurora_verify = _logic.run_aurora_verify
 run_opensearch_verify = _logic.run_opensearch_verify
+insert_s3vectors_vectors = _logic.insert_s3vectors_vectors
+search_s3vectors_vectors = _logic.search_s3vectors_vectors
+run_s3vectors_verify = _logic.run_s3vectors_verify
 MAX_RETRIES = _logic.MAX_RETRIES
 
 from models import DatabaseResult
@@ -416,3 +419,153 @@ class TestRunOpensearchVerify:
         assert result.success is False
         assert result.error_message is not None
         assert "connection failed" in result.error_message
+
+
+# ---------------------------------------------------------------------------
+# insert_s3vectors_vectors テスト
+# ---------------------------------------------------------------------------
+
+
+class TestInsertS3vectorsVectors:
+    """insert_s3vectors_vectors のモックテスト."""
+
+    @patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"})
+    def test_inserts_vectors(self) -> None:
+        """PutVectors が正しく呼ばれ投入件数を返す."""
+        mock_client = MagicMock()
+
+        with (
+            patch.object(_logic, "boto3") as mock_boto3,
+            patch.object(_logic.time, "sleep"),
+        ):
+            mock_boto3.client.return_value = mock_client
+            # モジュールレベル定数を一時的に上書き
+            with (
+                patch.object(_logic, "S3VECTORS_BUCKET_NAME", "test-bucket"),
+                patch.object(_logic, "S3VECTORS_INDEX_NAME", "test-index"),
+            ):
+                vectors = [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
+                count = insert_s3vectors_vectors(vectors)
+
+        assert count == 3
+        mock_boto3.client.assert_called_with("s3vectors")
+        mock_client.put_vectors.assert_called_once()
+        call_kwargs = mock_client.put_vectors.call_args[1]
+        assert call_kwargs["vectorBucketName"] == "test-bucket"
+        assert call_kwargs["indexName"] == "test-index"
+        assert len(call_kwargs["vectors"]) == 3
+
+    @patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"})
+    def test_failure_after_max_retries(self) -> None:
+        """最大リトライ回数超過で RuntimeError."""
+        mock_client = MagicMock()
+        mock_client.put_vectors.side_effect = Exception("service unavailable")
+
+        with (
+            patch.object(_logic, "boto3") as mock_boto3,
+            patch.object(_logic.time, "sleep"),
+        ):
+            mock_boto3.client.return_value = mock_client
+            with (
+                patch.object(_logic, "S3VECTORS_BUCKET_NAME", "test-bucket"),
+                patch.object(_logic, "S3VECTORS_INDEX_NAME", "test-index"),
+            ):
+                with pytest.raises(RuntimeError, match=f"{MAX_RETRIES} 回失敗"):
+                    insert_s3vectors_vectors([[0.1, 0.2]])
+
+        assert mock_client.put_vectors.call_count == MAX_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# search_s3vectors_vectors テスト
+# ---------------------------------------------------------------------------
+
+
+class TestSearchS3vectorsVectors:
+    """search_s3vectors_vectors のモックテスト."""
+
+    @patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"})
+    def test_returns_result_count(self) -> None:
+        """検索結果件数を正しく返す."""
+        mock_client = MagicMock()
+        mock_client.query_vectors.return_value = {
+            "vectors": [
+                {"key": "dummy-document-0", "distance": 0.1},
+                {"key": "dummy-document-1", "distance": 0.2},
+            ]
+        }
+
+        with (
+            patch.object(_logic, "boto3") as mock_boto3,
+            patch.object(_logic.time, "sleep"),
+        ):
+            mock_boto3.client.return_value = mock_client
+            with (
+                patch.object(_logic, "S3VECTORS_BUCKET_NAME", "test-bucket"),
+                patch.object(_logic, "S3VECTORS_INDEX_NAME", "test-index"),
+            ):
+                count = search_s3vectors_vectors([0.1, 0.2], top_k=3)
+
+        assert count == 2
+        mock_client.query_vectors.assert_called_once()
+        call_kwargs = mock_client.query_vectors.call_args[1]
+        assert call_kwargs["vectorBucketName"] == "test-bucket"
+        assert call_kwargs["indexName"] == "test-index"
+        assert call_kwargs["topK"] == 3
+
+    @patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"})
+    def test_failure_after_max_retries(self) -> None:
+        """最大リトライ回数超過で RuntimeError."""
+        mock_client = MagicMock()
+        mock_client.query_vectors.side_effect = Exception("service unavailable")
+
+        with (
+            patch.object(_logic, "boto3") as mock_boto3,
+            patch.object(_logic.time, "sleep"),
+        ):
+            mock_boto3.client.return_value = mock_client
+            with (
+                patch.object(_logic, "S3VECTORS_BUCKET_NAME", "test-bucket"),
+                patch.object(_logic, "S3VECTORS_INDEX_NAME", "test-index"),
+            ):
+                with pytest.raises(RuntimeError, match=f"{MAX_RETRIES} 回失敗"):
+                    search_s3vectors_vectors([0.1, 0.2])
+
+        assert mock_client.query_vectors.call_count == MAX_RETRIES
+
+
+# ---------------------------------------------------------------------------
+# run_s3vectors_verify テスト
+# ---------------------------------------------------------------------------
+
+
+class TestRunS3vectorsVerify:
+    """run_s3vectors_verify の統合モックテスト."""
+
+    def test_success_returns_database_result(self) -> None:
+        """正常系: DatabaseResult(success=True) を返す."""
+        with (
+            patch.object(_logic, "insert_s3vectors_vectors", return_value=5),
+            patch.object(_logic, "search_s3vectors_vectors", return_value=3),
+        ):
+            vectors = [[0.1] * 1536] * 5
+            query = [0.2] * 1536
+            result = run_s3vectors_verify(vectors, query)
+
+        assert isinstance(result, DatabaseResult)
+        assert result.database == "s3vectors"
+        assert result.success is True
+        assert result.insert_count == 5
+        assert result.search_result_count == 3
+        assert result.error_message is None
+
+    def test_failure_returns_error_result(self) -> None:
+        """異常系: success=False と error_message を返す."""
+        with patch.object(_logic, "insert_s3vectors_vectors", side_effect=RuntimeError("s3vectors api error")):
+            result = run_s3vectors_verify([[0.1]], [0.2])
+
+        assert isinstance(result, DatabaseResult)
+        assert result.database == "s3vectors"
+        assert result.success is False
+        assert result.error_message is not None
+        assert "s3vectors api error" in result.error_message
