@@ -7,6 +7,7 @@ export class NetworkConstruct extends Construct {
   readonly lambdaSg: ec2.SecurityGroup;
   readonly auroraSg: ec2.SecurityGroup;
   readonly vpcEndpointSg: ec2.SecurityGroup;
+  readonly ecsSg: ec2.SecurityGroup;
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
@@ -49,6 +50,28 @@ export class NetworkConstruct extends Construct {
       description: "Security group for VPC endpoints",
       allowAllOutbound: false,
     });
+
+    // Security Group: ECS Fargate
+    this.ecsSg = new ec2.SecurityGroup(this, "EcsSg", {
+      vpc: this.vpc,
+      securityGroupName: "vdbbench-dev-sg-ecs",
+      description: "Security group for ECS Fargate tasks",
+      allowAllOutbound: false,
+    });
+
+    // SG Rules: ECS -> Aurora:5432
+    this.ecsSg.addEgressRule(
+      this.auroraSg,
+      ec2.Port.tcp(5432),
+      "Allow ECS to Aurora on port 5432",
+    );
+
+    // SG Rules: ECS -> VPC Endpoints:443
+    this.ecsSg.addEgressRule(
+      this.vpcEndpointSg,
+      ec2.Port.tcp(443),
+      "Allow ECS to VPC endpoints on port 443",
+    );
 
     // SG Rules: Lambda -> Aurora:5432
     this.lambdaSg.addEgressRule(

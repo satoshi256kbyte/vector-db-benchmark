@@ -99,8 +99,8 @@ describe("NetworkConstruct", () => {
   });
 
   describe("Security Groups", () => {
-    test("セキュリティグループが 3 つ作成される", () => {
-      template.resourceCountIs("AWS::EC2::SecurityGroup", 3);
+    test("セキュリティグループが 4 つ作成される", () => {
+      template.resourceCountIs("AWS::EC2::SecurityGroup", 4);
     });
 
     test("Lambda SG から Aurora SG へのポート 5432 のエグレスルールが存在する", () => {
