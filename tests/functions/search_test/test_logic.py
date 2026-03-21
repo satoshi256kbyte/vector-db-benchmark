@@ -154,3 +154,210 @@ class TestProperty5LatencyStatsAccuracy:
         expected_p99 = arr[int(n * 0.99)]
         assert stats.p95_ms == expected_p95, f"P95 mismatch: {stats.p95_ms} != {expected_p95}"
         assert stats.p99_ms == expected_p99, f"P99 mismatch: {stats.p99_ms} != {expected_p99}"
+
+
+
+# --- 追加: 検索ロジックのユニットテスト (Task 6.3) ---
+from unittest.mock import MagicMock
+
+import pytest as _pytest  # noqa: E402
+
+search_aurora = _logic.search_aurora
+search_opensearch = _logic.search_opensearch
+search_s3vectors = _logic.search_s3vectors
+build_comparison_table = _logic.build_comparison_table
+_create_failure_result = _logic._create_failure_result
+
+
+def _make_success_result(database: str) -> object:
+    """テスト用の成功 DatabaseSearchResult を生成する."""
+    return _logic.DatabaseSearchResult(
+        database=database,
+        latency=_logic.LatencyStats(avg_ms=10.0, p50_ms=9.0, p95_ms=15.0, p99_ms=18.0, min_ms=5.0, max_ms=20.0),
+        throughput_qps=100.0,
+        search_count=10,
+        top_k=5,
+        success=True,
+    )
+
+
+class TestSearchAurora:
+    """search_aurora のユニットテスト."""
+
+    def test_success_all_queries(self) -> None:
+        """全クエリ成功時に正しい結果を返すこと."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        vectors = [[0.1] * 10, [0.2] * 10, [0.3] * 10]
+        result = search_aurora(mock_conn, vectors, 5)
+
+        assert result.database == "aurora_pgvector"
+        assert result.success is True
+        assert result.search_count == 3
+        assert result.top_k == 5
+        assert result.latency.min_ms >= 0
+
+    def test_all_queries_fail(self) -> None:
+        """全クエリ失敗時に failure result を返すこと."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = RuntimeError("query error")
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        vectors = [[0.1] * 10]
+        result = search_aurora(mock_conn, vectors, 5)
+
+        assert result.success is False
+        assert result.error_message == "All queries failed"
+
+    def test_partial_failure(self) -> None:
+        """一部クエリ失敗時に成功分のみカウントされること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        call_count = 0
+
+        def side_effect(*args: object, **kwargs: object) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise RuntimeError("query error")
+
+        mock_cursor.execute.side_effect = side_effect
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        vectors = [[0.1] * 10, [0.2] * 10, [0.3] * 10]
+        result = search_aurora(mock_conn, vectors, 5)
+
+        assert result.success is True
+        assert result.search_count == 2  # 3 - 1 failed
+
+
+class TestSearchOpensearch:
+    """search_opensearch のユニットテスト."""
+
+    def test_success_all_queries(self) -> None:
+        """全クエリ成功時に正しい結果を返すこと."""
+        mock_client = MagicMock()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        vectors = [[0.1] * 10, [0.2] * 10]
+        result = search_opensearch(mock_client, vectors, 5)
+
+        assert result.database == "opensearch"
+        assert result.success is True
+        assert result.search_count == 2
+
+    def test_all_queries_fail(self) -> None:
+        """全クエリ失敗時に failure result を返すこと."""
+        mock_client = MagicMock()
+        mock_client.search.side_effect = RuntimeError("connection error")
+
+        vectors = [[0.1] * 10]
+        result = search_opensearch(mock_client, vectors, 5)
+
+        assert result.success is False
+        assert result.error_message == "All queries failed"
+
+
+class TestSearchS3vectors:
+    """search_s3vectors のユニットテスト."""
+
+    def test_success_all_queries(self) -> None:
+        """全クエリ成功時に正しい結果を返すこと."""
+        mock_client = MagicMock()
+        mock_client.query_vectors.return_value = {"vectors": []}
+
+        vectors = [[0.1] * 10, [0.2] * 10]
+        result = search_s3vectors(mock_client, "bucket", "index", vectors, 5)
+
+        assert result.database == "s3vectors"
+        assert result.success is True
+        assert result.search_count == 2
+
+    def test_all_queries_fail(self) -> None:
+        """全クエリ失敗時に failure result を返すこと."""
+        mock_client = MagicMock()
+        mock_client.query_vectors.side_effect = RuntimeError("api error")
+
+        vectors = [[0.1] * 10]
+        result = search_s3vectors(mock_client, "bucket", "index", vectors, 5)
+
+        assert result.success is False
+
+
+class TestBuildComparisonTable:
+    """build_comparison_table のユニットテスト."""
+
+    def test_generates_correct_metrics(self) -> None:
+        """7つのメトリクス行が生成されること."""
+        aurora = _make_success_result("aurora_pgvector")
+        opensearch = _make_success_result("opensearch")
+        s3vectors = _make_success_result("s3vectors")
+
+        table = build_comparison_table(aurora, opensearch, s3vectors)  # type: ignore[arg-type]
+
+        assert len(table) == 7
+        metric_names = [row["metric"] for row in table]
+        assert "avg_ms" in metric_names
+        assert "throughput_qps" in metric_names
+
+    def test_failure_shows_na(self) -> None:
+        """失敗DBのメトリクスが N/A になること."""
+        aurora = _create_failure_result("aurora_pgvector", 10, 5, "error")
+        opensearch = _make_success_result("opensearch")
+        s3vectors = _make_success_result("s3vectors")
+
+        table = build_comparison_table(aurora, opensearch, s3vectors)  # type: ignore[arg-type]
+
+        for row in table:
+            assert row["aurora_pgvector"] == "N/A"
+
+
+class TestCreateFailureResult:
+    """_create_failure_result のユニットテスト."""
+
+    def test_returns_failure(self) -> None:
+        """失敗結果が正しく生成されること."""
+        result = _create_failure_result("test_db", 10, 5, "test error")
+        assert result.success is False
+        assert result.database == "test_db"
+        assert result.error_message == "test error"
+        assert result.latency.avg_ms == 0
+
+    def test_empty_stats(self) -> None:
+        """レイテンシ統計が全て0であること."""
+        result = _create_failure_result("db", 1, 1, "err")
+        assert result.latency.p50_ms == 0
+        assert result.latency.p95_ms == 0
+        assert result.throughput_qps == 0.0
+
+
+class TestCalculateLatencyStatsEdgeCases:
+    """calculate_latency_stats のエッジケーステスト."""
+
+    def test_single_element(self) -> None:
+        """要素1つのリストで全統計値が同一になること."""
+        stats = calculate_latency_stats([42.0])
+        assert stats.avg_ms == 42.0
+        assert stats.min_ms == 42.0
+        assert stats.max_ms == 42.0
+        assert stats.p50_ms == 42.0
+
+    def test_empty_list_raises(self) -> None:
+        """空リストで ValueError が発生すること."""
+        with _pytest.raises(ValueError, match="must not be empty"):
+            calculate_latency_stats([])
+
+    def test_two_elements(self) -> None:
+        """要素2つのリストで正しい統計値が返ること."""
+        stats = calculate_latency_stats([10.0, 20.0])
+        assert stats.min_ms == 10.0
+        assert stats.max_ms == 20.0
+        assert stats.avg_ms == 15.0
