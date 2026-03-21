@@ -33,6 +33,9 @@ htmlcov/
 .ruff_cache/
 .hypothesis/
 
+# SAM build output
+.aws-sam/
+
 # Environment
 .env
 .env.local
