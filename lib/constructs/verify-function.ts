@@ -47,7 +47,7 @@ export class VerifyFunctionConstruct extends Construct {
       functionName: "vdbbench-dev-lambda-vector-verify",
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "handler.handler",
-      code: lambda.Code.fromAsset("functions/vector-verify"),
+      code: lambda.Code.fromAsset(".aws-sam/build/VectorVerifyFunction"),
       memorySize: 256,
       timeout: cdk.Duration.seconds(300),
       vpc: props.vpc,
