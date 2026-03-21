@@ -12,6 +12,13 @@
 
 - npm（CDK プロジェクト用）
 
+### AWS SAM（ビルドツール）
+
+- Lambda 関数の依存ライブラリビルドに使用（デプロイは CDK が管理）
+- `sam build --use-container` で Docker コンテナ内ビルド
+- ネイティブバイナリ（psycopg2 等）を Lambda 実行環境（x86_64 Linux）互換でビルド
+- ビルド出力（`.aws-sam/build/`）を CDK の `Code.fromAsset` で参照
+
 ## アプリケーション / バッチ
 
 ### 言語
