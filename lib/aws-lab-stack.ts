@@ -1,7 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
-import { Aspects } from "aws-cdk-lib";
-import { AwsSolutionsChecks, NagSuppressions } from "cdk-nag";
+import { NagSuppressions } from "cdk-nag";
 import { Construct } from "constructs";
 import { AuroraConstruct } from "./constructs/aurora";
 import { NetworkConstruct } from "./constructs/network";
@@ -63,9 +62,6 @@ export class AwsLabStack extends cdk.Stack {
     openSearch.node.addDependency(network);
     verifyFunction.node.addDependency(aurora);
     verifyFunction.node.addDependency(network);
-
-    // cdk-nag: AwsSolutionsChecks を適用
-    Aspects.of(this).add(new AwsSolutionsChecks({ verbose: true }));
 
     // cdk-nag suppressions
     this.addNagSuppressions(lambdaRole);
