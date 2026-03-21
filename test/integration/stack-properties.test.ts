@@ -30,6 +30,7 @@ describe("CDK プロパティテスト", () => {
       "AWS::RDS::DBCluster": "DBClusterIdentifier",
       "AWS::IAM::Role": "RoleName",
       "AWS::OpenSearchServerless::Collection": "Name",
+      "AWS::S3Vectors::VectorBucket": "VectorBucketName",
     };
 
     const violations: string[] = [];
