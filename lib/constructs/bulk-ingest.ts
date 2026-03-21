@@ -20,6 +20,7 @@ export interface BulkIngestConstructProps {
 export class BulkIngestConstruct extends Construct {
   readonly cluster: ecs.Cluster;
   readonly taskDefinition: ecs.FargateTaskDefinition;
+  readonly container: ecs.ContainerDefinition;
 
   constructor(
     scope: Construct,
@@ -53,7 +54,7 @@ export class BulkIngestConstruct extends Construct {
     );
 
     // Container
-    this.taskDefinition.addContainer("BulkIngestContainer", {
+    this.container = this.taskDefinition.addContainer("BulkIngestContainer", {
       image: ecs.ContainerImage.fromAsset("ecs/bulk-ingest"),
       logging: ecs.LogDrivers.awsLogs({
         logGroup,

@@ -8,6 +8,7 @@ export interface OpenSearchConstructProps {
   vpc: ec2.Vpc;
   vpcEndpointSg: ec2.SecurityGroup;
   lambdaRoleArn: string;
+  ecsTaskRoleArn?: string;
 }
 
 export class OpenSearchConstruct extends Construct {
@@ -144,7 +145,10 @@ export class OpenSearchConstruct extends Construct {
                 ],
               },
             ],
-            Principal: [props.lambdaRoleArn],
+            Principal: [
+              props.lambdaRoleArn,
+              ...(props.ecsTaskRoleArn ? [props.ecsTaskRoleArn] : []),
+            ],
           },
         ]),
       },

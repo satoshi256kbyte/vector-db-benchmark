@@ -3,6 +3,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import { NagSuppressions } from "cdk-nag";
 import { Construct } from "constructs";
 import { AuroraConstruct } from "./constructs/aurora";
+import { BulkIngestConstruct } from "./constructs/bulk-ingest";
 import { NetworkConstruct } from "./constructs/network";
 import { OpenSearchConstruct } from "./constructs/opensearch";
 import { S3VectorsConstruct } from "./constructs/s3vectors";
@@ -35,14 +36,32 @@ export class VectorDbBenchmarkStack extends cdk.Stack {
     // 4. S3 Vectors: フルマネージドサービスのため VPC/SG 不要
     const s3vectors = new S3VectorsConstruct(this, "S3Vectors");
 
-    // 5. OpenSearch Serverless: lambdaRole ARN を渡す
+    // 5. BulkIngest: ECS Fargate タスク定義（OpenSearch より先に作成し、タスクロール ARN を渡す）
+    const bulkIngest = new BulkIngestConstruct(this, "BulkIngest", {
+      vpc: network.vpc,
+      ecsSg: network.ecsSg,
+      auroraCluster: aurora.cluster,
+      auroraSecret: aurora.secret,
+      opensearchCollectionEndpoint: "placeholder",
+      s3vectorsBucketName: s3vectors.vectorBucketName,
+      s3vectorsIndexName: s3vectors.indexName,
+    });
+
+    // 6. OpenSearch Serverless: lambdaRole ARN と ECS タスクロール ARN を渡す
     const openSearch = new OpenSearchConstruct(this, "OpenSearch", {
       vpc: network.vpc,
       vpcEndpointSg: network.vpcEndpointSg,
       lambdaRoleArn: lambdaRole.roleArn,
+      ecsTaskRoleArn: bulkIngest.taskDefinition.taskRole.roleArn,
     });
 
-    // 6. VerifyFunction: 事前作成した role を渡す
+    // OpenSearch エンドポイントを BulkIngest コンテナ環境変数に上書き設定
+    bulkIngest.container.addEnvironment(
+      "OPENSEARCH_ENDPOINT",
+      openSearch.collectionEndpoint,
+    );
+
+    // 7. VerifyFunction: 事前作成した role を渡す
     const verifyFunction = new VerifyFunctionConstruct(
       this,
       "VerifyFunction",
@@ -57,7 +76,7 @@ export class VectorDbBenchmarkStack extends cdk.Stack {
       },
     );
 
-    // 7. OpenSearch エンドポイントを Lambda 環境変数に追加
+    // 8. OpenSearch エンドポイントを Lambda 環境変数に追加
     verifyFunction.function.addEnvironment(
       "OPENSEARCH_ENDPOINT",
       openSearch.collectionEndpoint,
@@ -66,6 +85,7 @@ export class VectorDbBenchmarkStack extends cdk.Stack {
     // Construct 間の依存関係
     aurora.node.addDependency(network);
     openSearch.node.addDependency(network);
+    bulkIngest.node.addDependency(network);
     verifyFunction.node.addDependency(aurora);
     verifyFunction.node.addDependency(network);
     verifyFunction.node.addDependency(s3vectors);
@@ -149,6 +169,16 @@ export class VectorDbBenchmarkStack extends cdk.Stack {
         id: "AwsSolutions-RDS2",
         reason:
           "Aurora Serverless v2 storage encryption is enabled by default; explicit configuration is not required",
+      },
+      {
+        id: "AwsSolutions-ECS4",
+        reason:
+          "CloudWatch Container Insights is not required for this short-lived verification environment",
+      },
+      {
+        id: "AwsSolutions-ECS2",
+        reason:
+          "Environment variables are used to pass non-sensitive configuration (endpoints, bucket names) to ECS tasks; sensitive values use Secrets Manager",
       },
     ]);
   }
