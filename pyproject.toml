@@ -1,5 +1,5 @@
 [project]
-name = "aws-lab"
+name = "aws-private-lab"
 version = "0.1.0"
 description = "AWS技術検証用リポジトリ"
 requires-python = ">=3.13"

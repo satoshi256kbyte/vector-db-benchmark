@@ -7,7 +7,7 @@ import { NetworkConstruct } from "./constructs/network";
 import { OpenSearchConstruct } from "./constructs/opensearch";
 import { VerifyFunctionConstruct } from "./constructs/verify-function";
 
-export class AwsLabStack extends cdk.Stack {
+export class AwsPrivateLabStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -22,7 +22,7 @@ export class AwsLabStack extends cdk.Stack {
 
     // 3. Lambda IAM Role: 循環依存を回避するため先に作成
     const lambdaRole = new iam.Role(this, "VerifyFunctionRole", {
-      roleName: "awslab-dev-iam-lambda-vector-verify",
+      roleName: "awsprivatelab-dev-iam-lambda-vector-verify",
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(

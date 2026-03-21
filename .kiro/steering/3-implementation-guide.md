@@ -169,14 +169,14 @@ AWS リソース名は以下の形式で統一する:
 #### 命名例
 
 ```text
-awslab-dev-dynamodb-main
-awslab-dev-lambda-api
-awslab-dev-s3-data
+awsprivatelab-dev-dynamodb-main
+awsprivatelab-dev-lambda-api
+awsprivatelab-dev-s3-data
 ```
 
 #### 注意事項
 
-- アプリ名は `awslab` で統一
+- アプリ名は `awsprivatelab` で統一
 - 全て小文字とハイフン（`-`）を使用
 - アンダースコア（`_`）は使用しない
 - リソース名の長さ制限に注意（S3 バケット名は 63 文字まで）

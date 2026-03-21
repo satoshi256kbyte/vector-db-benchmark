@@ -4,7 +4,7 @@
     <mxCell id="1" parent="0"/>
 
     <!-- VPC Container -->
-    <mxCell id="vpc" value="VPC: awslab-dev-vpc-benchmark (10.0.0.0/16)" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=13;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="1">
+    <mxCell id="vpc" value="VPC: awsprivatelab-dev-vpc-benchmark (10.0.0.0/16)" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=13;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="1">
       <mxGeometry x="40" y="40" width="1100" height="780" as="geometry"/>
     </mxCell>
 
@@ -14,22 +14,22 @@
     </mxCell>
 
     <!-- Lambda SG Container -->
-    <mxCell id="lambda-sg" value="Lambda SG: awslab-dev-sg-lambda" style="swimlane;startSize=22;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+    <mxCell id="lambda-sg" value="Lambda SG: awsprivatelab-dev-sg-lambda" style="swimlane;startSize=22;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
       <mxGeometry x="30" y="50" width="280" height="200" as="geometry"/>
     </mxCell>
 
     <!-- Lambda Function -->
-    <mxCell id="lambda" value="Lambda&#xa;awslab-dev-lambda-vector-verify&#xa;Python 3.13 / 256MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+    <mxCell id="lambda" value="Lambda&#xa;awsprivatelab-dev-lambda-vector-verify&#xa;Python 3.13 / 256MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
       <mxGeometry x="100" y="50" width="60" height="60" as="geometry"/>
     </mxCell>
 
     <!-- Aurora SG Container -->
-    <mxCell id="aurora-sg" value="Aurora SG: awslab-dev-sg-aurora" style="swimlane;startSize=22;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+    <mxCell id="aurora-sg" value="Aurora SG: awsprivatelab-dev-sg-aurora" style="swimlane;startSize=22;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
       <mxGeometry x="30" y="350" width="280" height="300" as="geometry"/>
     </mxCell>
 
     <!-- Aurora Cluster -->
-    <mxCell id="aurora" value="Aurora Serverless v2&#xa;awslab-dev-aurora-pgvector&#xa;PostgreSQL 16.4 + pgvector&#xa;ACU: 0.5 - 16" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;fillColor=#2E27AD;strokeColor=#2E27AD;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
+    <mxCell id="aurora" value="Aurora Serverless v2&#xa;awsprivatelab-dev-aurora-pgvector&#xa;PostgreSQL 16.4 + pgvector&#xa;ACU: 0.5 - 16" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;fillColor=#2E27AD;strokeColor=#2E27AD;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
       <mxGeometry x="100" y="50" width="60" height="60" as="geometry"/>
     </mxCell>
 
@@ -39,7 +39,7 @@
     </mxCell>
 
     <!-- VPC Endpoints Container -->
-    <mxCell id="vpce-sg" value="VPC Endpoint SG: awslab-dev-sg-vpce" style="swimlane;startSize=22;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+    <mxCell id="vpce-sg" value="VPC Endpoint SG: awsprivatelab-dev-sg-vpce" style="swimlane;startSize=22;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
       <mxGeometry x="400" y="50" width="270" height="600" as="geometry"/>
     </mxCell>
 
@@ -59,7 +59,7 @@
     </mxCell>
 
     <!-- OpenSearch Serverless (outside VPC) -->
-    <mxCell id="opensearch" value="OpenSearch Serverless&#xa;awslab-dev-oss-vector&#xa;VECTORSEARCH&#xa;HNSW / faiss / cosinesimil" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.opensearch_service;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+    <mxCell id="opensearch" value="OpenSearch Serverless&#xa;awsprivatelab-dev-oss-vector&#xa;VECTORSEARCH&#xa;HNSW / faiss / cosinesimil" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.opensearch_service;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
       <mxGeometry x="1260" y="490" width="60" height="60" as="geometry"/>
     </mxCell>
 

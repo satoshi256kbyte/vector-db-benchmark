@@ -8,11 +8,11 @@
 
 ### 設計方針
 
-- 単一CDKスタック (`AwsLabStack`) に全リソースを定義
+- 単一CDKスタック (`AwsPrivateLabStack`) に全リソースを定義
 - Construct単位で論理的に分割し、再利用性を確保
 - cdk-nagによるセキュリティチェックを全リソースに適用
 - removalPolicy: DESTROY を全リソースに設定
-- 命名規則: `awslab-dev-{サービス名}-{用途}`
+- 命名規則: `awsprivatelab-dev-{サービス名}-{用途}`
 
 ## アーキテクチャ
 
@@ -20,10 +20,10 @@
 
 ```mermaid
 graph TB
-    subgraph VPC["VPC: awslab-dev-vpc-benchmark"]
+    subgraph VPC["VPC: awsprivatelab-dev-vpc-benchmark"]
         subgraph PrivateSubnet["プライベートサブネット (2 AZ)"]
-            Lambda["動作確認 Lambda<br/>awslab-dev-lambda-vector-verify"]
-            Aurora["Aurora Serverless v2<br/>awslab-dev-aurora-pgvector"]
+            Lambda["動作確認 Lambda<br/>awsprivatelab-dev-lambda-vector-verify"]
+            Aurora["Aurora Serverless v2<br/>awsprivatelab-dev-aurora-pgvector"]
         end
 
         subgraph VPCEndpoints["VPCエンドポイント"]
@@ -34,7 +34,7 @@ graph TB
     end
 
     subgraph AWSServices["AWSサービス"]
-        OSS["OpenSearch Serverless<br/>awslab-dev-oss-vector"]
+        OSS["OpenSearch Serverless<br/>awsprivatelab-dev-oss-vector"]
     end
 
     Lambda -->|"Port 5432 / SG"| Aurora
@@ -67,7 +67,7 @@ graph TB
 ### CDK Construct 構成
 
 ```
-AwsLabStack
+AwsPrivateLabStack
 ├── NetworkConstruct          # VPC、サブネット、VPCエンドポイント、セキュリティグループ
 ├── AuroraConstruct           # Aurora Serverless v2 クラスター
 ├── OpenSearchConstruct       # OpenSearch Serverless コレクション + ポリシー
@@ -318,7 +318,7 @@ def generate_dummy_vectors(count: int, dimension: int) -> list[list[float]]:
 
 ### プロパティ 1: リソース命名規則の一貫性
 
-*任意の* CDKスタック内のユーザー定義名を持つリソースに対して、そのリソース名は `awslab-dev-` で始まるパターンに一致しなければならない。
+*任意の* CDKスタック内のユーザー定義名を持つリソースに対して、そのリソース名は `awsprivatelab-dev-` で始まるパターンに一致しなければならない。
 
 **検証対象: 要件 1.6**
 
@@ -446,7 +446,7 @@ def test_generate_dummy_vectors_property(count: int, dimension: int) -> None:
 
 ```
 test/
-  aws-lab-stack.test.ts              # 既存テスト
+  aws-private-lab-stack.test.ts              # 既存テスト
   constructs/
     network.test.ts                  # NetworkConstruct テスト
     aurora.test.ts                   # AuroraConstruct テスト

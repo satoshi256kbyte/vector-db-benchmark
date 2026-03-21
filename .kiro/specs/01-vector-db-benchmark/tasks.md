@@ -7,7 +7,7 @@
   - セキュリティグループ 3つ（Lambda用、Aurora用、VPCエンドポイント用）
   - セキュリティグループルール（Lambda→Aurora:5432、Lambda→VPC EP:443）
   - VPCエンドポイント（Secrets Manager、CloudWatch Logs、OpenSearch Serverless）
-  - 命名規則: `awslab-dev-*`
+  - 命名規則: `awsprivatelab-dev-*`
 - [x] 1.2 `test/constructs/network.test.ts` に NetworkConstruct のユニットテストを作成する
   - VPC作成の検証
   - NAT Gateway が存在しないことの検証
@@ -23,7 +23,7 @@
   - Secrets Manager による認証情報自動生成
   - removalPolicy: DESTROY、スナップショットスキップ
   - セキュリティグループ: Lambda SG からの 5432 のみ許可
-  - 命名規則: `awslab-dev-aurora-pgvector`
+  - 命名規則: `awsprivatelab-dev-aurora-pgvector`
 - [x] 2.2 `test/constructs/aurora.test.ts` に AuroraConstruct のユニットテストを作成する
   - Aurora クラスター作成の検証
   - Serverless v2 スケーリング設定（Min/Max ACU）の検証
@@ -38,7 +38,7 @@
   - ネットワークポリシー（VPCエンドポイント経由のみ）
   - データアクセスポリシー（Lambda IAMロールのみ許可）
   - OCU制限: CfnAccountSettings でインデックス用・検索用それぞれ Max 4
-  - 命名規則: `awslab-dev-oss-vector`
+  - 命名規則: `awsprivatelab-dev-oss-vector`
 - [x] 3.2 `test/constructs/opensearch.test.ts` に OpenSearchConstruct のユニットテストを作成する
   - コレクション作成（VECTORSEARCH タイプ）の検証
   - 暗号化ポリシーの検証
@@ -77,7 +77,7 @@
   - プライベートサブネット配置、Lambda SG 適用
   - IAMロール: Secrets Manager 読み取り、OpenSearch aoss:APIAccessAll
   - 環境変数設定（AURORA_SECRET_ARN、AURORA_CLUSTER_ENDPOINT、OPENSEARCH_ENDPOINT、POWERTOOLS_*）
-  - 命名規則: `awslab-dev-lambda-vector-verify`
+  - 命名規則: `awsprivatelab-dev-lambda-vector-verify`
 - [x] 5.2 `test/constructs/verify-function.test.ts` に VerifyFunctionConstruct のユニットテストを作成する
   - Lambda 関数作成の検証（ランタイム、メモリ、タイムアウト）
   - VPC 配置の検証
@@ -86,11 +86,11 @@
 
 ## タスク 6: スタック統合と cdk-nag 対応
 
-- [x] 6.1 `lib/aws-lab-stack.ts` を更新し全 Construct を統合する
+- [x] 6.1 `lib/aws-private-lab-stack.ts` を更新し全 Construct を統合する
   - NetworkConstruct、AuroraConstruct、OpenSearchConstruct、VerifyFunctionConstruct のインスタンス化
   - Construct 間の依存関係設定
   - cdk-nag Aspects の適用
-- [x] 6.2 `bin/aws-lab.ts` に cdk-nag の AwsSolutionsChecks を追加する
+- [x] 6.2 `bin/aws-private-lab.ts` に cdk-nag の AwsSolutionsChecks を追加する
 - [x] 6.3 `test/integration/stack-nag.test.ts` に cdk-nag 統合テストを作成する
   - AwsSolutionsChecks でエラーが発生しないことの検証
   - 必要な NagSuppressions の追加と理由コメント

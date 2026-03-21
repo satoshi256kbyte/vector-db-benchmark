@@ -39,7 +39,7 @@ export class VerifyFunctionConstruct extends Construct {
     }
 
     this.function = new lambda.Function(this, "Function", {
-      functionName: "awslab-dev-lambda-vector-verify",
+      functionName: "awsprivatelab-dev-lambda-vector-verify",
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "handler.handler",
       code: lambda.Code.fromAsset("functions/vector-verify"),

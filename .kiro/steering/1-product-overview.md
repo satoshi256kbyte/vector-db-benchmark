@@ -2,7 +2,7 @@
 
 ## リポジトリ名
 
-aws-lab
+aws-private-lab
 
 ## 概要
 

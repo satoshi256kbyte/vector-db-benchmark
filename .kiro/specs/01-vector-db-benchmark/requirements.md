@@ -37,7 +37,7 @@ AWS環境において、Aurora Serverless v2 (pgvector) と OpenSearch Serverles
 3. THE CDKスタック SHALL Auroraクラスターへのアクセスに必要なVPCエンドポイントを作成する
 4. THE CDKスタック SHALL OpenSearchコレクションへのアクセスに必要なVPCエンドポイントを作成する
 5. THE CDKスタック SHALL 動作確認LambdaがAWSサービスAPIを呼び出すために必要なVPCエンドポイント（CloudWatch Logs等）を作成する
-6. THE CDKスタック SHALL すべてのリソース名を「awslab-dev-{サービス名}-{用途}」の命名規則に従って設定する
+6. THE CDKスタック SHALL すべてのリソース名を「awsprivatelab-dev-{サービス名}-{用途}」の命名規則に従って設定する
 7. THE CDKスタック SHALL cdk-nagによるセキュリティチェックに合格する構成を生成する
 
 ### 要件 2: Aurora Serverless v2 (pgvector) の構築

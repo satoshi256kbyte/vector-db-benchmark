@@ -22,7 +22,7 @@ describe("OpenSearchConstruct", () => {
     template.hasResourceProperties(
       "AWS::OpenSearchServerless::Collection",
       {
-        Name: "awslab-dev-oss-vector",
+        Name: "awsprivatelab-dev-oss-vector",
         Type: "VECTORSEARCH",
       },
     );
@@ -59,7 +59,7 @@ describe("OpenSearchConstruct", () => {
     template.hasResourceProperties(
       "AWS::OpenSearchServerless::VpcEndpoint",
       {
-        Name: "awslab-dev-oss-vector-vpce",
+        Name: "awsprivatelab-dev-oss-vector-vpce",
       },
     );
   });

@@ -13,14 +13,14 @@ export class NetworkConstruct extends Construct {
 
     // VPC: 2 AZ, ISOLATED subnets only, no NAT Gateway
     this.vpc = new ec2.Vpc(this, "Vpc", {
-      vpcName: "awslab-dev-vpc-benchmark",
+      vpcName: "awsprivatelab-dev-vpc-benchmark",
       ipAddresses: ec2.IpAddresses.cidr("10.0.0.0/16"),
       maxAzs: 2,
       natGateways: 0,
       subnetConfiguration: [
         {
           cidrMask: 24,
-          name: "awslab-dev-subnet-isolated",
+          name: "awsprivatelab-dev-subnet-isolated",
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
         },
       ],
@@ -29,7 +29,7 @@ export class NetworkConstruct extends Construct {
     // Security Group: Lambda
     this.lambdaSg = new ec2.SecurityGroup(this, "LambdaSg", {
       vpc: this.vpc,
-      securityGroupName: "awslab-dev-sg-lambda",
+      securityGroupName: "awsprivatelab-dev-sg-lambda",
       description: "Security group for Lambda functions",
       allowAllOutbound: false,
     });
@@ -37,7 +37,7 @@ export class NetworkConstruct extends Construct {
     // Security Group: Aurora
     this.auroraSg = new ec2.SecurityGroup(this, "AuroraSg", {
       vpc: this.vpc,
-      securityGroupName: "awslab-dev-sg-aurora",
+      securityGroupName: "awsprivatelab-dev-sg-aurora",
       description: "Security group for Aurora cluster",
       allowAllOutbound: false,
     });
@@ -45,7 +45,7 @@ export class NetworkConstruct extends Construct {
     // Security Group: VPC Endpoints
     this.vpcEndpointSg = new ec2.SecurityGroup(this, "VpcEndpointSg", {
       vpc: this.vpc,
-      securityGroupName: "awslab-dev-sg-vpce",
+      securityGroupName: "awsprivatelab-dev-sg-vpce",
       description: "Security group for VPC endpoints",
       allowAllOutbound: false,
     });

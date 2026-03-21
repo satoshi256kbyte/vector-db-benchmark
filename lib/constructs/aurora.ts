@@ -17,7 +17,7 @@ export class AuroraConstruct extends Construct {
     super(scope, id);
 
     this.cluster = new rds.DatabaseCluster(this, "Cluster", {
-      clusterIdentifier: "awslab-dev-aurora-pgvector",
+      clusterIdentifier: "awsprivatelab-dev-aurora-pgvector",
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_16_4,
       }),

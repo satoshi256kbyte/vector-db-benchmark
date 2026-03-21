@@ -1,5 +1,5 @@
 {
-  "name": "aws-lab",
+  "name": "aws-private-lab",
   "version": "0.1.0",
   "private": true,
   "scripts": {
