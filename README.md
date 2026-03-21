@@ -17,6 +17,8 @@ AWS のベクトルデータベースサービス（Aurora pgvector、OpenSearch
 - Python 3.13
 - AWS CLI v2（SSO 設定済み）
 - AWS CDK v2（`npm install` で導入）
+- AWS SAM CLI
+- Docker（`sam build --use-container` で使用）
 
 ランタイムバージョンは `.tool-versions`（asdf）で管理。
 
@@ -45,7 +47,10 @@ aws login
 ### デプロイコマンド
 
 ```bash
-# デフォルトプロファイルを使用
+# 1. Lambda 関数のビルド（Docker コンテナ内で依存ライブラリをビルド）
+sam build --use-container
+
+# 2. CDK デプロイ（デフォルトプロファイル）
 npx cdk deploy VectorDbBenchmarkStack
 
 # プロファイルを指定する場合
