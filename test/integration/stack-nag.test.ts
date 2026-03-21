@@ -2,14 +2,14 @@ import * as cdk from "aws-cdk-lib";
 import { Annotations, Match } from "aws-cdk-lib/assertions";
 import { Aspects } from "aws-cdk-lib";
 import { AwsSolutionsChecks } from "cdk-nag";
-import { AwsPrivateLabStack } from "../../lib/aws-private-lab-stack";
+import { VectorDbBenchmarkStack } from "../../lib/vector-db-benchmark-stack";
 
 describe("cdk-nag AwsSolutions", () => {
   let stack: cdk.Stack;
 
   beforeAll(() => {
     const app = new cdk.App();
-    stack = new AwsPrivateLabStack(app, "NagTestStack");
+    stack = new VectorDbBenchmarkStack(app, "NagTestStack");
     Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
     // Force synthesis to trigger nag checks
     app.synth();

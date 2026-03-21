@@ -2,9 +2,11 @@
 
 ## 概要
 
-本設計書は、Aurora Serverless v2 (pgvector) と OpenSearch Serverless (ベクトルエンジン) の2つのベクトルデータベースを AWS CDK v2 (TypeScript) で構築し、Lambda関数 (Python 3.13) による最小限の動作確認を行うシステムの技術設計を定義する。
+本設計書は、Aurora Serverless v2 (pgvector)、OpenSearch Serverless (ベクトルエンジン)、Amazon S3 Vectors の3つのベクトルデータベースを AWS CDK v2 (TypeScript) で構築し、Lambda関数 (Python 3.13) による最小限の動作確認を行うシステムの技術設計を定義する。
 
 すべてのリソースはVPC内のプライベートサブネットに配置し、NAT Gatewayを使用せずVPCエンドポイント経由でAWSサービスにアクセスする。環境は `cdk destroy` で完全に削除可能な構成とする。
+
+なお、Aurora pgvectorおよびOpenSearch ServerlessではHNSWアルゴリズムを明示的に指定してインデックスを構築するが、S3 Vectorsはベクトルインデックスのアルゴリズムを利用者が指定できず内部で自動最適化される。このため3者間の厳密なアルゴリズム比較は成立しないが、ANNクエリの動作確認という観点では許容する。
 
 ### 設計方針
 
@@ -30,15 +32,18 @@ graph TB
             EP_SM["Secrets Manager EP"]
             EP_CW["CloudWatch Logs EP"]
             EP_OS["OpenSearch Serverless EP"]
+            EP_S3V["S3 Vectors EP"]
         end
     end
 
     subgraph AWSServices["AWSサービス"]
         OSS["OpenSearch Serverless<br/>awsprivatelab-dev-oss-vector"]
+        S3V["Amazon S3 Vectors<br/>awsprivatelab-dev-s3vectors-benchmark"]
     end
 
     Lambda -->|"Port 5432 / SG"| Aurora
     Lambda -->|"VPC EP"| EP_OS -->|"PrivateLink"| OSS
+    Lambda -->|"VPC EP"| EP_S3V -->|"PrivateLink"| S3V
     Lambda -->|"VPC EP"| EP_SM
     Lambda -->|"VPC EP"| EP_CW
 ```
@@ -52,11 +57,12 @@ graph TB
   - `com.amazonaws.{region}.secretsmanager` — Aurora認証情報取得
   - `com.amazonaws.{region}.logs` — CloudWatch Logs出力
   - `com.amazonaws.{region}.aoss` — OpenSearch Serverlessアクセス
+  - `com.amazonaws.{region}.s3vectors` — Amazon S3 Vectorsアクセス
 
 ### セキュリティグループ設計
 
 | セキュリティグループ | インバウンド | アウトバウンド |
-|---|---|---|
+| --- | --- | --- |
 | Lambda SG | なし | Aurora SG:5432, VPC EP SG:443 |
 | Aurora SG | Lambda SG:5432 | なし |
 | VPC EP SG | Lambda SG:443 | なし |
@@ -66,11 +72,12 @@ graph TB
 
 ### CDK Construct 構成
 
-```
+```text
 AwsPrivateLabStack
 ├── NetworkConstruct          # VPC、サブネット、VPCエンドポイント、セキュリティグループ
 ├── AuroraConstruct           # Aurora Serverless v2 クラスター
 ├── OpenSearchConstruct       # OpenSearch Serverless コレクション + ポリシー
+├── S3VectorsConstruct        # S3 Vectors ベクトルバケット + インデックス
 └── VerifyFunctionConstruct   # 動作確認Lambda関数 + IAMロール
 ```
 
@@ -94,7 +101,7 @@ class NetworkConstruct extends Construct {
 
 - VPC: 2 AZ、ISOLATEDサブネットのみ（NAT Gateway なし）
 - セキュリティグループ: Lambda用、Aurora用、VPCエンドポイント用の3つ
-- VPCエンドポイント: Secrets Manager、CloudWatch Logs、OpenSearch Serverless
+- VPCエンドポイント: Secrets Manager、CloudWatch Logs、OpenSearch Serverless、S3 Vectors
 
 ### 2. AuroraConstruct
 
@@ -141,7 +148,70 @@ class OpenSearchConstruct extends Construct {
   - データアクセスポリシー: Lambda IAMロールのみ許可
 - OCU制限: CfnAccountSettings でインデックス用・検索用それぞれ Max 4〜8 に制限
 
-### 4. VerifyFunctionConstruct
+### 4. S3VectorsConstruct
+
+Amazon S3 Vectors ベクトルバケットおよびベクトルインデックスを構築する。
+
+```typescript
+import * as cdk from "aws-cdk-lib";
+import * as s3vectors from "aws-cdk-lib/aws-s3vectors";
+import { Construct } from "constructs";
+
+interface S3VectorsConstructProps {
+  // S3 VectorsはフルマネージドサービスのためVPC/SG propsは不要
+  // VPCエンドポイント経由のアクセスはNetworkConstructで設定済み
+}
+
+class S3VectorsConstruct extends Construct {
+  readonly vectorBucketName: string;
+  readonly indexName: string;
+}
+```
+
+#### 設計詳細
+
+- ベクトルバケット名: `awsprivatelab-dev-s3vectors-benchmark`
+- インデックス名: `embeddings`
+- 次元数: 1536（Aurora/OpenSearchと統一）
+- 距離メトリクス: `cosine`（Aurora/OpenSearchと統一）
+- データ型: `float32`
+- 削除ポリシー: DESTROY（`applyRemovalPolicy(RemovalPolicy.DESTROY)`）
+
+#### CDKリソース構成
+
+```typescript
+// ベクトルバケット
+const vectorBucket = new s3vectors.CfnVectorBucket(this, "VectorBucket", {
+  vectorBucketName: "awsprivatelab-dev-s3vectors-benchmark",
+});
+vectorBucket.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+// ベクトルインデックス
+const vectorIndex = new s3vectors.CfnIndex(this, "VectorIndex", {
+  vectorBucketName: vectorBucket.vectorBucketName!,
+  indexName: "embeddings",
+  dimension: 1536,
+  distanceMetric: "cosine",
+  dataType: "float32",
+});
+vectorIndex.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+// 依存関係: インデックスはバケットに依存
+vectorIndex.addDependency(vectorBucket);
+```
+
+#### S3 Vectors と Aurora/OpenSearch の主な違い
+
+| 項目 | Aurora pgvector | OpenSearch Serverless | S3 Vectors |
+| --- | --- | --- | --- |
+| インデックスアルゴリズム | HNSW（明示指定） | HNSW（明示指定） | 内部自動最適化（指定不可） |
+| スケーリング単位 | ACU | OCU | なし（フルマネージド） |
+| API名前空間 | SQL (psycopg2) | OpenSearch REST API | s3vectors (boto3) |
+| 認証方式 | Secrets Manager | IAM (SigV4) | IAM (SigV4) |
+| VPCアクセス | セキュリティグループ | VPCエンドポイント (aoss) | VPCエンドポイント (s3vectors) |
+| スキーマ定義 | CREATE TABLE + CREATE INDEX | インデックスマッピング (JSON) | CfnIndex（次元数・距離メトリクスのみ） |
+
+### 5. VerifyFunctionConstruct
 
 動作確認用Lambda関数を構築する。
 
@@ -152,6 +222,8 @@ interface VerifyFunctionConstructProps {
   auroraCluster: rds.DatabaseCluster;
   auroraSecret: secretsmanager.ISecret;
   opensearchCollectionEndpoint: string;
+  s3vectorsBucketName: string;
+  s3vectorsIndexName: string;
 }
 
 class VerifyFunctionConstruct extends Construct {
@@ -167,12 +239,19 @@ class VerifyFunctionConstruct extends Construct {
   - `AURORA_SECRET_ARN`: Aurora認証情報のSecret ARN
   - `AURORA_CLUSTER_ENDPOINT`: Auroraクラスターエンドポイント
   - `OPENSEARCH_ENDPOINT`: OpenSearchコレクションエンドポイント
+  - `S3VECTORS_BUCKET_NAME`: S3 Vectorsベクトルバケット名
+  - `S3VECTORS_INDEX_NAME`: S3 Vectorsインデックス名
   - `POWERTOOLS_SERVICE_NAME`: `vector-verify`
   - `POWERTOOLS_LOG_LEVEL`: `INFO`
+- IAMポリシー（追加分）:
+  - `s3vectors:PutVectors` — ベクトルデータ投入
+  - `s3vectors:GetVectors` — ベクトルデータ取得
+  - `s3vectors:QueryVectors` — ANNクエリ実行
+  - `s3vectors:DeleteVectors` — ベクトルデータ削除（クリーンアップ用）
 
 ### Lambda関数のファイル構成
 
-```
+```text
 functions/vector-verify/
 ├── handler.py          # Lambdaエントリポイント
 ├── logic.py            # ビジネスロジック（ベクトル生成、DB操作）
@@ -189,23 +268,28 @@ sequenceDiagram
     participant SM as Secrets Manager
     participant Aurora as Aurora (pgvector)
     participant OS as OpenSearch Serverless
+    participant S3V as S3 Vectors
 
     User->>Lambda: invoke
     Lambda->>Lambda: ダミーベクトル5件生成 (1536次元)
-    
+
     Lambda->>SM: Aurora認証情報取得
     SM-->>Lambda: credentials
-    
+
     Lambda->>Aurora: pgvector拡張有効化 + テーブル/インデックス作成
     Lambda->>Aurora: ベクトル5件INSERT
     Lambda->>Aurora: ANNクエリ実行
     Aurora-->>Lambda: 検索結果
-    
+
     Lambda->>OS: ベクトル5件 bulk insert
     Lambda->>OS: ANNクエリ実行 (k-NN)
     OS-->>Lambda: 検索結果
-    
-    Lambda-->>User: 結果レスポンス (投入件数, 検索結果件数, 成否)
+
+    Lambda->>S3V: PutVectors (ベクトル5件投入)
+    Lambda->>S3V: QueryVectors (ANNクエリ実行)
+    S3V-->>Lambda: 検索結果
+
+    Lambda-->>User: 結果レスポンス (3DB分の投入件数, 検索結果件数, 成否)
 ```
 
 
@@ -263,13 +347,53 @@ CREATE INDEX IF NOT EXISTS embeddings_hnsw_idx
 }
 ```
 
+### Amazon S3 Vectors データモデル
+
+S3 Vectorsはフルマネージドサービスのため、ユーザーがスキーマを定義する必要はない。CDKでベクトルインデックスの次元数・距離メトリクス・データ型を指定するのみ。
+
+#### インデックス設定（CDK定義）
+
+- 次元数: 1536
+- 距離メトリクス: cosine
+- データ型: float32
+
+#### PutVectors API データ形式
+
+```python
+s3vectors.put_vectors(
+    vectorBucketName="awsprivatelab-dev-s3vectors-benchmark",
+    indexName="embeddings",
+    vectors=[
+        {
+            "key": "dummy-document-0",
+            "data": {"float32": [0.1, -0.2, ...]},  # 1536次元
+            "metadata": {"content": "dummy-document-0"}
+        }
+    ]
+)
+```
+
+#### QueryVectors API データ形式
+
+```python
+response = s3vectors.query_vectors(
+    vectorBucketName="awsprivatelab-dev-s3vectors-benchmark",
+    indexName="embeddings",
+    queryVector={"float32": [0.1, -0.2, ...]},  # 1536次元
+    topK=3,
+    returnDistance=True,
+    returnMetadata=True
+)
+# response["vectors"] に検索結果が格納される
+```
+
 ### Lambda レスポンスモデル
 
 ```python
 @dataclass
 class DatabaseResult:
     """各データベースの動作確認結果"""
-    database: str           # "aurora_pgvector" or "opensearch"
+    database: str           # "aurora_pgvector", "opensearch", or "s3vectors"
     insert_count: int       # 投入件数
     search_result_count: int  # 検索結果件数
     success: bool           # 成否
@@ -280,6 +404,7 @@ class VerifyResponse:
     """動作確認Lambda全体のレスポンス"""
     aurora: DatabaseResult
     opensearch: DatabaseResult
+    s3vectors: DatabaseResult
     vector_dimension: int   # 1536
     total_vectors: int      # 5
 ```
@@ -307,9 +432,9 @@ def generate_dummy_vectors(count: int, dimension: int) -> list[list[float]]:
 
 - VPC境界とサブネット配置
 - セキュリティグループの境界
-- VPCエンドポイントの接続経路
-- Aurora クラスターと OpenSearch コレクションの配置
-- Lambda関数からの通信経路
+- VPCエンドポイントの接続経路（S3 Vectors用を含む）
+- Aurora クラスター、OpenSearch コレクション、S3 Vectorsの配置
+- Lambda関数からの通信経路（3つのDB全てへの経路）
 
 
 ## 正当性プロパティ
@@ -320,7 +445,7 @@ def generate_dummy_vectors(count: int, dimension: int) -> list[list[float]]:
 
 *任意の* CDKスタック内のユーザー定義名を持つリソースに対して、そのリソース名は `awsprivatelab-dev-` で始まるパターンに一致しなければならない。
 
-**検証対象: 要件 1.6**
+**検証対象: 要件 1.7**
 
 ### プロパティ 2: ダミーベクトル生成の正確性
 
@@ -330,33 +455,37 @@ def generate_dummy_vectors(count: int, dimension: int) -> list[list[float]]:
 
 ### プロパティ 3: レスポンスモデルの完全性
 
-*任意の* DatabaseResult に対して、`database`、`insert_count`、`search_result_count`、`success` フィールドが存在し、`success` が False の場合は `error_message` が None でない値を持たなければならない。
+*任意の* DatabaseResult に対して、`database`、`insert_count`、`search_result_count`、`success` フィールドが存在し、`success` が False の場合は `error_message` が None でない値を持たなければならない。また、VerifyResponse は `aurora`、`opensearch`、`s3vectors` の3つの DatabaseResult フィールドを持たなければならない。
 
-**検証対象: 要件 5.9**
+**検証対象: 要件 5.11**
 
 ### プロパティ 4: 全リソースの削除ポリシー
 
 *任意の* 合成されたCloudFormationテンプレート内の DeletionPolicy をサポートするリソースに対して、その DeletionPolicy は "Delete" に設定されていなければならない。
 
-**検証対象: 要件 6.1, 6.3**
+**検証対象: 要件 6.1, 6.3, 3a.6**
 
 ## エラーハンドリング
 
 ### Lambda関数のエラーハンドリング戦略
 
 | エラー種別 | 対処方法 | レスポンス |
-|---|---|---|
+| --- | --- | --- |
 | Aurora接続失敗 | Secrets Manager取得 → 接続リトライ（最大3回） | `success: false`, `error_message` に詳細 |
 | pgvector拡張有効化失敗 | DDL実行エラーをキャッチ | `success: false`, `error_message` に詳細 |
 | OpenSearch接続失敗 | VPCエンドポイント経由の接続リトライ（最大3回） | `success: false`, `error_message` に詳細 |
+| S3 Vectors API失敗 | boto3 s3vectorsクライアントのリトライ（最大3回） | `success: false`, `error_message` に詳細 |
 | データ投入失敗 | トランザクションロールバック（Aurora）/ エラーログ出力 | `success: false`, 投入済み件数を記録 |
 | 検索クエリ失敗 | タイムアウト設定 + エラーログ出力 | `success: false`, `error_message` に詳細 |
+
+各データベースの動作確認は独立して実行される。1つのデータベースで失敗しても、残りの2つは継続して実行する。
 
 ### CDKスタックのエラーハンドリング
 
 - cdk-nag違反: デプロイ前にエラーとして検出、抑制理由をコメントで明記
 - リソース作成失敗: CloudFormationのロールバック機能に依存
 - 依存関係エラー: Construct間の明示的な依存関係定義で回避
+- S3 Vectors削除順序: ベクトルインデックス → ベクトルバケットの順に削除（空でないバケットは削除不可のため）
 
 ### Powertools for AWS Lambda の活用
 
@@ -387,11 +516,13 @@ def handler(event, context):
 特定の具体例、エッジケース、エラー条件を検証する。
 
 **CDKテスト（TypeScript / Jest）:**
+
 - CloudFormationテンプレートのアサーション
 - リソースプロパティの検証
 - cdk-nagチェックの合格確認
 
 **Pythonテスト（pytest）:**
+
 - Lambda handler のモックテスト
 - ビジネスロジックの単体テスト
 - データモデルの検証
@@ -401,6 +532,7 @@ def handler(event, context):
 すべての入力に対して普遍的に成立するプロパティを検証する。
 
 **ライブラリ:** Hypothesis（Python）
+
 - 各プロパティテストは最低100回のイテレーションを実行
 - 各テストにはデザインドキュメントのプロパティ番号をタグ付け
 - タグ形式: `Feature: 01-vector-db-benchmark, Property {番号}: {プロパティ名}`
@@ -408,19 +540,23 @@ def handler(event, context):
 ### テスト対象と手法の対応
 
 | テスト対象 | 手法 | ツール |
-|---|---|---|
+| --- | --- | --- |
 | VPCリソース構成 | ユニットテスト（CDK assertions） | Jest |
 | NAT Gateway不使用 | ユニットテスト（CDK assertions） | Jest |
-| VPCエンドポイント存在 | ユニットテスト（CDK assertions） | Jest |
+| VPCエンドポイント存在（s3vectors含む） | ユニットテスト（CDK assertions） | Jest |
 | Aurora構成（ACU、削除ポリシー） | ユニットテスト（CDK assertions） | Jest |
 | OpenSearch構成（ポリシー、OCU） | ユニットテスト（CDK assertions） | Jest |
-| Lambda VPC配置・IAM権限 | ユニットテスト（CDK assertions） | Jest |
+| S3 Vectors構成（バケット、インデックス、次元数、距離メトリクス） | ユニットテスト（CDK assertions） | Jest |
+| S3 Vectors削除ポリシーと依存関係 | ユニットテスト（CDK assertions） | Jest |
+| Lambda VPC配置・IAM権限（s3vectors権限含む） | ユニットテスト（CDK assertions） | Jest |
+| Lambda環境変数（S3VECTORS_*含む） | ユニットテスト（CDK assertions） | Jest |
 | cdk-nagセキュリティチェック | ユニットテスト（cdk-nag + CDK assertions） | Jest |
 | リソース命名規則 | プロパティテスト | Jest（テンプレート走査） |
 | ダミーベクトル生成 | プロパティテスト | Hypothesis |
-| レスポンスモデル完全性 | プロパティテスト | Hypothesis |
+| レスポンスモデル完全性（3DB対応） | プロパティテスト | Hypothesis |
 | 削除ポリシー一貫性 | プロパティテスト | Jest（テンプレート走査） |
-| Lambda handler処理フロー | ユニットテスト（モック） | pytest + moto |
+| Lambda handler処理フロー（3DB対応） | ユニットテスト（モック） | pytest + moto |
+| S3 Vectors投入・検索ロジック | ユニットテスト（モック） | pytest |
 | draw.io構成図の存在 | ユニットテスト（ファイル存在確認） | Jest or pytest |
 
 ### プロパティベーステスト設定
@@ -444,13 +580,14 @@ def test_generate_dummy_vectors_property(count: int, dimension: int) -> None:
 
 ### テストディレクトリ構成
 
-```
+```text
 test/
   aws-private-lab-stack.test.ts              # 既存テスト
   constructs/
     network.test.ts                  # NetworkConstruct テスト
     aurora.test.ts                   # AuroraConstruct テスト
     opensearch.test.ts               # OpenSearchConstruct テスト
+    s3vectors.test.ts                # S3VectorsConstruct テスト
     verify-function.test.ts          # VerifyFunctionConstruct テスト
   integration/
     stack-nag.test.ts                # cdk-nag 統合テスト
@@ -459,7 +596,7 @@ test/
 tests/
   functions/
     vector_verify/
-      test_logic.py                  # ビジネスロジックテスト
+      test_logic.py                  # ビジネスロジックテスト（S3 Vectors含む）
       test_models.py                 # データモデルテスト（プロパティテスト含む）
-      test_handler.py                # ハンドラーテスト
+      test_handler.py                # ハンドラーテスト（3DB対応）
 ```

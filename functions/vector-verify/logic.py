@@ -1,6 +1,6 @@
 """動作確認Lambda用ビジネスロジック.
 
-Aurora (pgvector) および OpenSearch Serverless に対する
+Aurora (pgvector)、OpenSearch Serverless、および Amazon S3 Vectors に対する
 ベクトルデータの投入・検索処理を提供する。
 """
 
@@ -26,6 +26,8 @@ VECTOR_COUNT = 5
 MAX_RETRIES = 3
 RETRY_DELAY_SEC = 2.0
 OPENSEARCH_INDEX_NAME = "embeddings"
+S3VECTORS_BUCKET_NAME = os.environ.get("S3VECTORS_BUCKET_NAME", "")
+S3VECTORS_INDEX_NAME = os.environ.get("S3VECTORS_INDEX_NAME", "")
 
 
 def generate_dummy_vectors(count: int, dimension: int) -> list[list[float]]:
@@ -398,6 +400,125 @@ def run_opensearch_verify(vectors: list[list[float]], query_vector: list[float])
         logger.exception("OpenSearch 動作確認失敗")
         return DatabaseResult(
             database="opensearch",
+            insert_count=0,
+            search_result_count=0,
+            success=False,
+            error_message=str(exc),
+        )
+
+
+@tracer.capture_method
+def insert_s3vectors_vectors(vectors: list[list[float]]) -> int:
+    """S3 Vectors にベクトルデータを投入する（リトライ付き）.
+
+    boto3 s3vectors クライアントの PutVectors API を使用して
+    ベクトルデータをベクトルバケットに投入する。
+
+    Args:
+        vectors: 投入するベクトルのリスト
+
+    Returns:
+        投入件数
+
+    Raises:
+        RuntimeError: 最大リトライ回数を超えても投入できなかった場合
+    """
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            client = boto3.client("s3vectors")
+            put_vectors_payload = [
+                {
+                    "key": f"dummy-document-{i}",
+                    "data": {"float32": vec},
+                    "metadata": {"content": f"dummy-document-{i}"},
+                }
+                for i, vec in enumerate(vectors)
+            ]
+            client.put_vectors(
+                vectorBucketName=S3VECTORS_BUCKET_NAME,
+                indexName=S3VECTORS_INDEX_NAME,
+                vectors=put_vectors_payload,
+            )
+            logger.info("S3 Vectors ベクトル投入完了", extra={"count": len(vectors)})
+            return len(vectors)
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            logger.warning("S3 Vectors 投入リトライ", extra={"attempt": attempt, "error": str(exc)})
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SEC)
+
+    msg = f"S3 Vectors ベクトル投入に {MAX_RETRIES} 回失敗: {last_error}"
+    raise RuntimeError(msg)
+
+
+@tracer.capture_method
+def search_s3vectors_vectors(query_vector: list[float], top_k: int = 3) -> int:
+    """S3 Vectors で ANN クエリを実行する（リトライ付き）.
+
+    boto3 s3vectors クライアントの QueryVectors API を使用して
+    近似最近傍探索を実行する。
+
+    Args:
+        query_vector: クエリベクトル
+        top_k: 返却する近傍数
+
+    Returns:
+        検索結果件数
+
+    Raises:
+        RuntimeError: 最大リトライ回数を超えても検索できなかった場合
+    """
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            client = boto3.client("s3vectors")
+            response = client.query_vectors(
+                vectorBucketName=S3VECTORS_BUCKET_NAME,
+                indexName=S3VECTORS_INDEX_NAME,
+                queryVector={"float32": query_vector},
+                topK=top_k,
+                returnDistance=True,
+                returnMetadata=True,
+            )
+            result_count: int = len(response.get("vectors", []))
+            logger.info("S3 Vectors ANN クエリ完了", extra={"result_count": result_count})
+            return result_count
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            logger.warning("S3 Vectors 検索リトライ", extra={"attempt": attempt, "error": str(exc)})
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SEC)
+
+    msg = f"S3 Vectors 検索に {MAX_RETRIES} 回失敗: {last_error}"
+    raise RuntimeError(msg)
+
+
+@tracer.capture_method
+def run_s3vectors_verify(vectors: list[list[float]], query_vector: list[float]) -> DatabaseResult:
+    """Amazon S3 Vectors の動作確認を実行する.
+
+    Args:
+        vectors: 投入するベクトルのリスト
+        query_vector: 検索用クエリベクトル
+
+    Returns:
+        S3 Vectors の動作確認結果
+    """
+    try:
+        insert_count = insert_s3vectors_vectors(vectors)
+        search_result_count = search_s3vectors_vectors(query_vector)
+
+        return DatabaseResult(
+            database="s3vectors",
+            insert_count=insert_count,
+            search_result_count=search_result_count,
+            success=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("S3 Vectors 動作確認失敗")
+        return DatabaseResult(
+            database="s3vectors",
             insert_count=0,
             search_result_count=0,
             success=False,

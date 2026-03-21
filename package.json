@@ -1,5 +1,5 @@
 {
-  "name": "aws-private-lab",
+  "name": "vector-db-benchmark",
   "version": "0.1.0",
   "private": true,
   "scripts": {

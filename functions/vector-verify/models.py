@@ -10,7 +10,7 @@ class DatabaseResult:
     """各データベースの動作確認結果.
 
     Attributes:
-        database: データベース識別子 ("aurora_pgvector" or "opensearch")
+        database: データベース識別子 ("aurora_pgvector", "opensearch", or "s3vectors")
         insert_count: 投入件数
         search_result_count: 検索結果件数
         success: 成否
@@ -31,12 +31,14 @@ class VerifyResponse:
     Attributes:
         aurora: Aurora (pgvector) の動作確認結果
         opensearch: OpenSearch Serverless の動作確認結果
+        s3vectors: Amazon S3 Vectors の動作確認結果
         vector_dimension: ベクトル次元数 (1536)
         total_vectors: 投入ベクトル数 (5)
     """
 
     aurora: DatabaseResult
     opensearch: DatabaseResult
+    s3vectors: DatabaseResult
     vector_dimension: int
     total_vectors: int
 

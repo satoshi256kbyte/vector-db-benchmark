@@ -13,14 +13,14 @@ export class NetworkConstruct extends Construct {
 
     // VPC: 2 AZ, ISOLATED subnets only, no NAT Gateway
     this.vpc = new ec2.Vpc(this, "Vpc", {
-      vpcName: "awsprivatelab-dev-vpc-benchmark",
+      vpcName: "vdbbench-dev-vpc-benchmark",
       ipAddresses: ec2.IpAddresses.cidr("10.0.0.0/16"),
       maxAzs: 2,
       natGateways: 0,
       subnetConfiguration: [
         {
           cidrMask: 24,
-          name: "awsprivatelab-dev-subnet-isolated",
+          name: "vdbbench-dev-subnet-isolated",
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
         },
       ],
@@ -29,7 +29,7 @@ export class NetworkConstruct extends Construct {
     // Security Group: Lambda
     this.lambdaSg = new ec2.SecurityGroup(this, "LambdaSg", {
       vpc: this.vpc,
-      securityGroupName: "awsprivatelab-dev-sg-lambda",
+      securityGroupName: "vdbbench-dev-sg-lambda",
       description: "Security group for Lambda functions",
       allowAllOutbound: false,
     });
@@ -37,7 +37,7 @@ export class NetworkConstruct extends Construct {
     // Security Group: Aurora
     this.auroraSg = new ec2.SecurityGroup(this, "AuroraSg", {
       vpc: this.vpc,
-      securityGroupName: "awsprivatelab-dev-sg-aurora",
+      securityGroupName: "vdbbench-dev-sg-aurora",
       description: "Security group for Aurora cluster",
       allowAllOutbound: false,
     });
@@ -45,7 +45,7 @@ export class NetworkConstruct extends Construct {
     // Security Group: VPC Endpoints
     this.vpcEndpointSg = new ec2.SecurityGroup(this, "VpcEndpointSg", {
       vpc: this.vpc,
-      securityGroupName: "awsprivatelab-dev-sg-vpce",
+      securityGroupName: "vdbbench-dev-sg-vpce",
       description: "Security group for VPC endpoints",
       allowAllOutbound: false,
     });
@@ -92,6 +92,15 @@ export class NetworkConstruct extends Construct {
     this.vpc.addInterfaceEndpoint("OpenSearchServerlessEndpoint", {
       service: new ec2.InterfaceVpcEndpointService(
         `com.amazonaws.${cdk.Aws.REGION}.aoss`,
+      ),
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [this.vpcEndpointSg],
+    });
+
+    // VPC Endpoint: S3 Vectors
+    this.vpc.addInterfaceEndpoint("S3VectorsEndpoint", {
+      service: new ec2.InterfaceVpcEndpointService(
+        `com.amazonaws.${cdk.Aws.REGION}.s3vectors`,
       ),
       subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [this.vpcEndpointSg],

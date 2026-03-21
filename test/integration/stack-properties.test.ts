@@ -1,6 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
-import { AwsPrivateLabStack } from "../../lib/aws-private-lab-stack";
+import { VectorDbBenchmarkStack } from "../../lib/vector-db-benchmark-stack";
 
 describe("CDK プロパティテスト", () => {
   let template: Template;
@@ -8,7 +8,7 @@ describe("CDK プロパティテスト", () => {
 
   beforeAll(() => {
     const app = new cdk.App();
-    const stack = new AwsPrivateLabStack(app, "PropertyTestStack");
+    const stack = new VectorDbBenchmarkStack(app, "PropertyTestStack");
     template = Template.fromStack(stack);
     templateJson = template.toJSON();
   });
@@ -17,11 +17,11 @@ describe("CDK プロパティテスト", () => {
    * プロパティ 1: リソース命名規則の一貫性
    *
    * 任意の CDKスタック内のユーザー定義名を持つリソースに対して、
-   * そのリソース名は `awsprivatelab-dev-` で始まるパターンに一致しなければならない。
+   * そのリソース名は `vdbbench-dev-` で始まるパターンに一致しなければならない。
    *
    * **Validates: Requirements 1.6**
    */
-  test("プロパティ 1: ユーザー定義名を持つ全リソースが awsprivatelab-dev- で始まること", () => {
+  test("プロパティ 1: ユーザー定義名を持つ全リソースが vdbbench-dev- で始まること", () => {
     const resources = templateJson.Resources;
     const namePropertyMap: Record<string, string> = {
       "AWS::EC2::VPC": "Tags",
@@ -46,9 +46,9 @@ describe("CDK プロパティテスト", () => {
           | undefined;
         if (tags) {
           const nameTag = tags.find((t) => t.Key === "Name");
-          if (nameTag && !nameTag.Value.startsWith("awsprivatelab-dev-")) {
+          if (nameTag && !nameTag.Value.startsWith("vdbbench-dev-")) {
             violations.push(
-              `${logicalId} (${resourceType}): Tag Name = "${nameTag.Value}" does not start with "awsprivatelab-dev-"`,
+              `${logicalId} (${resourceType}): Tag Name = "${nameTag.Value}" does not start with "vdbbench-dev-"`,
             );
           }
         }
@@ -61,10 +61,10 @@ describe("CDK プロパティテスト", () => {
         const nameValue = res.Properties[nameProp] as string;
         if (
           typeof nameValue === "string" &&
-          !nameValue.startsWith("awsprivatelab-dev-")
+          !nameValue.startsWith("vdbbench-dev-")
         ) {
           violations.push(
-            `${logicalId} (${resourceType}): ${nameProp} = "${nameValue}" does not start with "awsprivatelab-dev-"`,
+            `${logicalId} (${resourceType}): ${nameProp} = "${nameValue}" does not start with "vdbbench-dev-"`,
           );
         }
       }

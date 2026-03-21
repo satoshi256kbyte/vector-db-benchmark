@@ -115,3 +115,107 @@
   - VPC エンドポイントの接続経路
   - Aurora クラスターと OpenSearch コレクションの配置
   - Lambda 関数からの通信経路
+
+## タスク 9: S3VectorsConstruct の実装
+
+- [x] 9.1 `lib/constructs/s3vectors.ts` に S3VectorsConstruct を作成する
+  - CfnVectorBucket（名前: `awsprivatelab-dev-s3vectors-benchmark`）
+  - CfnIndex（名前: `embeddings`、dimension: 1536、distanceMetric: cosine、dataType: float32）
+  - RemovalPolicy.DESTROY をバケット・インデックス両方に適用
+  - 依存関係: インデックスはバケットに依存（`addDependency`）
+  - `vectorBucketName` と `indexName` を readonly プロパティとして公開
+  - _要件: 3a.1, 3a.2, 3a.3, 3a.6_
+- [x] 9.2 `test/constructs/s3vectors.test.ts` に S3VectorsConstruct のユニットテストを作成する
+  - CfnVectorBucket 作成の検証
+  - CfnIndex 作成の検証（dimension: 1536、distanceMetric: cosine、dataType: float32）
+  - DeletionPolicy: Delete がバケット・インデックス両方に設定されていることの検証
+  - インデックスからバケットへの依存関係の検証
+  - _要件: 3a.1, 3a.2, 3a.3, 3a.6_
+
+## タスク 10: NetworkConstruct の更新（S3 Vectors VPCエンドポイント追加）
+
+- [x] 10.1 `lib/constructs/network.ts` に S3 Vectors 用 VPC エンドポイントを追加する
+  - Interface VPC エンドポイント: `com.amazonaws.{region}.s3vectors`
+  - 既存の OpenSearch Serverless エンドポイントと同じパターンで追加
+  - _要件: 1.5, 3a.4, 7.8_
+- [x] 10.2 `test/constructs/network.test.ts` を更新し S3 Vectors VPC エンドポイントを検証する
+  - 新しい VPC エンドポイントの存在検証
+  - _要件: 1.5_
+
+## タスク 11: Lambda 関数の更新（S3 Vectors 対応）
+
+- [x] 11.1 `functions/vector-verify/models.py` を更新する
+  - VerifyResponse に `s3vectors: DatabaseResult` フィールドを追加
+  - DatabaseResult の docstring に `"s3vectors"` を追加
+  - _要件: 5.11, プロパティ 3_
+- [x] 11.2 `functions/vector-verify/logic.py` を更新する
+  - S3 Vectors 定数を追加（`S3VECTORS_BUCKET_NAME`、`S3VECTORS_INDEX_NAME` を環境変数から取得）
+  - `insert_s3vectors_vectors()` 関数を追加（boto3 s3vectors クライアントの PutVectors API 使用）
+  - `search_s3vectors_vectors()` 関数を追加（boto3 s3vectors クライアントの QueryVectors API 使用）
+  - `run_s3vectors_verify()` 関数を追加（run_aurora_verify / run_opensearch_verify と同パターン）
+  - _要件: 5.7, 5.10_
+- [x] 11.3 `functions/vector-verify/handler.py` を更新する
+  - `run_s3vectors_verify` を logic からインポート
+  - S3 Vectors 動作確認ブロックを追加（独立実行、Aurora/OpenSearch と同パターン）
+  - VerifyResponse 構築に `s3vectors` 結果を含める
+  - _要件: 5.7, 5.10, 5.11_
+- [x] 11.4 `functions/vector-verify/requirements.txt` を確認・更新する
+  - boto3 が既に含まれていることを確認（s3vectors クライアントは boto3 に含まれる）
+  - _要件: 5.7_
+
+## タスク 12: チェックポイント - S3 Vectors Lambda ロジックの確認
+
+- [x] 12. すべてのテストが pass することを確認し、不明点があればユーザーに質問する
+
+## タスク 13: VerifyFunctionConstruct の更新（S3 Vectors 対応）
+
+- [x] 13.1 `lib/constructs/verify-function.ts` を更新する
+  - props に `s3vectorsBucketName` と `s3vectorsIndexName` を追加
+  - 環境変数 `S3VECTORS_BUCKET_NAME` と `S3VECTORS_INDEX_NAME` を追加
+  - IAM ポリシーに `s3vectors:PutVectors`、`s3vectors:GetVectors`、`s3vectors:QueryVectors`、`s3vectors:DeleteVectors` を追加
+  - _要件: 5.2, 3a.5, 7.7, 設計書 VerifyFunctionConstruct_
+- [x] 13.2 `test/constructs/verify-function.test.ts` を更新する
+  - S3 Vectors 環境変数の検証
+  - s3vectors IAM 権限の検証
+  - _要件: 5.2, 3a.5_
+
+## タスク 14: スタック統合の更新（S3 Vectors 追加）
+
+- [x] 14.1 `lib/aws-private-lab-stack.ts` を更新する
+  - S3VectorsConstruct をインポート・インスタンス化
+  - `s3vectorsBucketName` と `s3vectorsIndexName` を VerifyFunctionConstruct に渡す
+  - 依存関係: verifyFunction は s3vectors に依存
+  - 必要な cdk-nag suppressions を追加
+  - _要件: 3a, 設計書_
+
+## タスク 15: テストの更新（S3 Vectors 対応）
+
+- [x] 15.1 `tests/functions/vector_verify/test_models.py` を更新する
+  - VerifyResponse のプロパティテストに `s3vectors` フィールドを追加
+  - **プロパティ 3: レスポンスモデルの完全性**
+  - **検証対象: 要件 5.11**
+- [x] 15.2 `tests/functions/vector_verify/test_logic.py` を更新する
+  - S3 Vectors の insert/search 関数のユニットテストを追加（boto3 s3vectors クライアントをモック）
+  - `run_s3vectors_verify` のユニットテストを追加
+  - _要件: 5.7, 5.10_
+- [x] 15.3 `test/integration/stack-properties.test.ts` を更新する
+  - S3 Vectors リソースが命名規則に従っていることを検証（プロパティ 1）
+  - S3 Vectors リソースに DeletionPolicy: Delete が設定されていることを検証（プロパティ 4）
+  - **プロパティ 1: リソース命名規則の一貫性**
+  - **プロパティ 4: 全リソースの削除ポリシー**
+  - **検証対象: 要件 1.7, 3a.6**
+- [x] 15.4 `test/integration/stack-nag.test.ts` を更新する
+  - S3 Vectors リソース追加後も cdk-nag が pass することを確認
+  - _要件: 1.8, 7.1_
+
+## タスク 16: チェックポイント - 全テスト pass 確認
+
+- [x] 16. すべてのテスト（Jest + pytest）が pass することを確認し、不明点があればユーザーに質問する
+
+## タスク 17: アーキテクチャ構成図の更新
+
+- [x] 17.1 `docs/architecture-vector-benchmark.drawio` を更新する
+  - S3 Vectors（awsprivatelab-dev-s3vectors-benchmark）を構成図に追加
+  - S3 Vectors VPC エンドポイント（com.amazonaws.{region}.s3vectors）を追加
+  - Lambda から S3 Vectors への VPC エンドポイント経由の通信経路を追加
+  - _要件: 4.1, 4.4_

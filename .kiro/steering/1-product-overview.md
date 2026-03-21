@@ -2,7 +2,7 @@
 
 ## リポジトリ名
 
-aws-private-lab
+vector-db-benchmark
 
 ## 概要
 

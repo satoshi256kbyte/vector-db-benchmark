@@ -17,7 +17,7 @@ export class OpenSearchConstruct extends Construct {
   constructor(scope: Construct, id: string, props: OpenSearchConstructProps) {
     super(scope, id);
 
-    const collectionName = "awsprivatelab-dev-oss-vector";
+    const collectionName = "vdbbench-dev-oss-vector";
 
     // OCU制限: AwsCustomResource で UpdateAccountSettings API を呼び出し
     // インデックス用・検索用それぞれ Max 4

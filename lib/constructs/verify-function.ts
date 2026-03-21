@@ -12,6 +12,8 @@ export interface VerifyFunctionConstructProps {
   auroraCluster: rds.DatabaseCluster;
   auroraSecret: secretsmanager.ISecret;
   opensearchCollectionEndpoint?: string;
+  s3vectorsBucketName: string;
+  s3vectorsIndexName: string;
   role?: iam.IRole;
 }
 
@@ -38,8 +40,11 @@ export class VerifyFunctionConstruct extends Construct {
         props.opensearchCollectionEndpoint;
     }
 
+    environment.S3VECTORS_BUCKET_NAME = props.s3vectorsBucketName;
+    environment.S3VECTORS_INDEX_NAME = props.s3vectorsIndexName;
+
     this.function = new lambda.Function(this, "Function", {
-      functionName: "awsprivatelab-dev-lambda-vector-verify",
+      functionName: "vdbbench-dev-lambda-vector-verify",
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "handler.handler",
       code: lambda.Code.fromAsset("functions/vector-verify"),
@@ -59,6 +64,19 @@ export class VerifyFunctionConstruct extends Construct {
     this.function.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["aoss:APIAccessAll"],
+        resources: ["*"],
+      }),
+    );
+
+    // Grant S3 Vectors access
+    this.function.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "s3vectors:PutVectors",
+          "s3vectors:GetVectors",
+          "s3vectors:QueryVectors",
+          "s3vectors:DeleteVectors",
+        ],
         resources: ["*"],
       }),
     );

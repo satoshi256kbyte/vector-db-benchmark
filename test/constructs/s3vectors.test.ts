@@ -14,7 +14,7 @@ describe("S3VectorsConstruct", () => {
 
   test("CfnVectorBucket が作成される", () => {
     template.hasResourceProperties("AWS::S3Vectors::VectorBucket", {
-      VectorBucketName: "awsprivatelab-dev-s3vectors-benchmark",
+      VectorBucketName: "vdbbench-dev-s3vectors-benchmark",
     });
   });
 

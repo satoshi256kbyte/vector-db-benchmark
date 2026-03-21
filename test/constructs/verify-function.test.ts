@@ -22,7 +22,7 @@ describe("VerifyFunctionConstruct", () => {
       auroraSecret: aurora.secret,
       opensearchCollectionEndpoint:
         "https://dummy-endpoint.aoss.amazonaws.com",
-      s3vectorsBucketName: "awsprivatelab-dev-s3vectors-benchmark",
+      s3vectorsBucketName: "vdbbench-dev-s3vectors-benchmark",
       s3vectorsIndexName: "embeddings",
     });
     template = Template.fromStack(stack);
@@ -75,7 +75,7 @@ describe("VerifyFunctionConstruct", () => {
       Environment: {
         Variables: Match.objectLike({
           S3VECTORS_BUCKET_NAME:
-            "awsprivatelab-dev-s3vectors-benchmark",
+            "vdbbench-dev-s3vectors-benchmark",
           S3VECTORS_INDEX_NAME: "embeddings",
         }),
       },
