@@ -37,4 +37,4 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = [".", "functions/vector-verify"]
+pythonpath = [".", "functions/vector-verify", "ecs/bulk-ingest", "functions/search-test"]
