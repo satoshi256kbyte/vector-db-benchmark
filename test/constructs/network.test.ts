@@ -29,8 +29,8 @@ describe("NetworkConstruct", () => {
   });
 
   describe("VPC Endpoints", () => {
-    test("VPC Interface Endpoint が 3 つ存在する", () => {
-      template.resourceCountIs("AWS::EC2::VPCEndpoint", 3);
+    test("VPC Interface Endpoint が 4 つ存在する", () => {
+      template.resourceCountIs("AWS::EC2::VPCEndpoint", 4);
     });
 
     test("Secrets Manager の VPC Endpoint が作成される", () => {
@@ -74,6 +74,22 @@ describe("NetworkConstruct", () => {
               "com.amazonaws.",
               { Ref: "AWS::Region" },
               ".aoss",
+            ],
+          ],
+        },
+        VpcEndpointType: "Interface",
+      });
+    });
+
+    test("S3 Vectors の VPC Endpoint が作成される", () => {
+      template.hasResourceProperties("AWS::EC2::VPCEndpoint", {
+        ServiceName: {
+          "Fn::Join": [
+            "",
+            [
+              "com.amazonaws.",
+              { Ref: "AWS::Region" },
+              ".s3vectors",
             ],
           ],
         },
