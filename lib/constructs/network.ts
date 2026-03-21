@@ -73,6 +73,20 @@ export class NetworkConstruct extends Construct {
       "Allow ECS to VPC endpoints on port 443",
     );
 
+    // SG Rules: Aurora <- ECS:5432
+    this.auroraSg.addIngressRule(
+      this.ecsSg,
+      ec2.Port.tcp(5432),
+      "Allow inbound from ECS on port 5432",
+    );
+
+    // SG Rules: VPC Endpoints <- ECS:443
+    this.vpcEndpointSg.addIngressRule(
+      this.ecsSg,
+      ec2.Port.tcp(443),
+      "Allow inbound from ECS on port 443",
+    );
+
     // SG Rules: Lambda -> Aurora:5432
     this.lambdaSg.addEgressRule(
       this.auroraSg,
