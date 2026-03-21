@@ -22,6 +22,8 @@ describe("VerifyFunctionConstruct", () => {
       auroraSecret: aurora.secret,
       opensearchCollectionEndpoint:
         "https://dummy-endpoint.aoss.amazonaws.com",
+      s3vectorsBucketName: "awsprivatelab-dev-s3vectors-benchmark",
+      s3vectorsIndexName: "embeddings",
     });
     template = Template.fromStack(stack);
   });
@@ -65,6 +67,36 @@ describe("VerifyFunctionConstruct", () => {
           POWERTOOLS_LOG_LEVEL: "INFO",
         }),
       },
+    });
+  });
+
+  test("Lambda 関数に S3 Vectors 環境変数が設定される", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          S3VECTORS_BUCKET_NAME:
+            "awsprivatelab-dev-s3vectors-benchmark",
+          S3VECTORS_INDEX_NAME: "embeddings",
+        }),
+      },
+    });
+  });
+
+  test("IAM ポリシーに s3vectors 権限が含まれる", () => {
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              "s3vectors:PutVectors",
+              "s3vectors:GetVectors",
+              "s3vectors:QueryVectors",
+              "s3vectors:DeleteVectors",
+            ]),
+            Effect: "Allow",
+          }),
+        ]),
+      }),
     });
   });
 
