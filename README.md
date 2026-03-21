@@ -6,8 +6,8 @@ AWS のベクトルデータベースサービス（Aurora pgvector、OpenSearch
 ## アーキテクチャ
 
 - VPC + プライベートサブネット
-- Aurora Serverless v2（pgvector 拡張）
-- OpenSearch Serverless（ベクトル検索コレクション）
+- Aurora Serverless v2（pgvector 拡張、0 ACU オートポーズ対応）
+- OpenSearch Serverless（ベクトル検索コレクション、冗長スタンバイ無効）
 - Amazon S3 Vectors
 - Lambda（Python 3.13）による動作確認関数
 
@@ -84,6 +84,18 @@ cat /tmp/response.json | python -m json.tool
 
 Aurora pgvector、OpenSearch Serverless、S3 Vectors それぞれに対して
 ダミーベクトルの投入・検索を実行し、結果を JSON で返します。
+
+## コスト最適化
+
+本リポジトリは検証用途のため、以下のコスト最適化設定を適用しています。
+
+| サービス              | 設定                                     | 効果                                                     |
+| --------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| Aurora Serverless v2  | MinCapacity: 0 ACU（オートポーズ有効）   | 未使用時はコンピュート課金ゼロ（ストレージ課金のみ）     |
+| OpenSearch Serverless | standbyReplicas: DISABLED、MaxOCU: 2     | 最小 0.5 OCU × 2 = 1 OCU（インデックス + 検索）で稼働   |
+
+Aurora はコネクションがない状態が続くと自動的にポーズし、接続要求時に自動再開します（コールドスタートあり）。
+OpenSearch Serverless はゼロスケールに対応していないため、冗長スタンバイ無効 + OCU 上限制限で最小コストに抑えています。
 
 ## テスト
 
