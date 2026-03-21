@@ -1,0 +1,112 @@
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0" adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- VPC Container -->
+    <mxCell id="vpc" value="VPC: awslab-dev-vpc-benchmark (10.0.0.0/16)" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=13;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="1">
+      <mxGeometry x="40" y="40" width="1100" height="780" as="geometry"/>
+    </mxCell>
+
+    <!-- Private Isolated Subnets Container -->
+    <mxCell id="subnets" value="Private Isolated Subnets (2 AZ)" style="swimlane;startSize=25;fillColor=#F1F8E9;strokeColor=#558B2F;fontStyle=1;fontSize=11;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="vpc">
+      <mxGeometry x="30" y="50" width="700" height="700" as="geometry"/>
+    </mxCell>
+
+    <!-- Lambda SG Container -->
+    <mxCell id="lambda-sg" value="Lambda SG: awslab-dev-sg-lambda" style="swimlane;startSize=22;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+      <mxGeometry x="30" y="50" width="280" height="200" as="geometry"/>
+    </mxCell>
+
+    <!-- Lambda Function -->
+    <mxCell id="lambda" value="Lambda&#xa;awslab-dev-lambda-vector-verify&#xa;Python 3.13 / 256MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+      <mxGeometry x="100" y="50" width="60" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- Aurora SG Container -->
+    <mxCell id="aurora-sg" value="Aurora SG: awslab-dev-sg-aurora" style="swimlane;startSize=22;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+      <mxGeometry x="30" y="350" width="280" height="300" as="geometry"/>
+    </mxCell>
+
+    <!-- Aurora Cluster -->
+    <mxCell id="aurora" value="Aurora Serverless v2&#xa;awslab-dev-aurora-pgvector&#xa;PostgreSQL 16.4 + pgvector&#xa;ACU: 0.5 - 16" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;fillColor=#2E27AD;strokeColor=#2E27AD;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
+      <mxGeometry x="100" y="50" width="60" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- Secrets Manager (via VPC EP) -->
+    <mxCell id="secrets" value="Secrets Manager&#xa;(Aurora認証情報)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.secrets_manager;fillColor=#DD344C;strokeColor=#DD344C;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
+      <mxGeometry x="100" y="190" width="60" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- VPC Endpoints Container -->
+    <mxCell id="vpce-sg" value="VPC Endpoint SG: awslab-dev-sg-vpce" style="swimlane;startSize=22;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+      <mxGeometry x="400" y="50" width="270" height="600" as="geometry"/>
+    </mxCell>
+
+    <!-- VPC EP: Secrets Manager -->
+    <mxCell id="vpce-sm" value="VPC Endpoint&#xa;Secrets Manager&#xa;(Interface)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+      <mxGeometry x="105" y="50" width="50" height="50" as="geometry"/>
+    </mxCell>
+
+    <!-- VPC EP: CloudWatch Logs -->
+    <mxCell id="vpce-cw" value="VPC Endpoint&#xa;CloudWatch Logs&#xa;(Interface)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+      <mxGeometry x="105" y="230" width="50" height="50" as="geometry"/>
+    </mxCell>
+
+    <!-- VPC EP: OpenSearch Serverless -->
+    <mxCell id="vpce-oss" value="VPC Endpoint&#xa;OpenSearch Serverless&#xa;(Interface / aoss)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+      <mxGeometry x="105" y="410" width="50" height="50" as="geometry"/>
+    </mxCell>
+
+    <!-- OpenSearch Serverless (outside VPC) -->
+    <mxCell id="opensearch" value="OpenSearch Serverless&#xa;awslab-dev-oss-vector&#xa;VECTORSEARCH&#xa;HNSW / faiss / cosinesimil" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.opensearch_service;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+      <mxGeometry x="1260" y="490" width="60" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- CloudWatch Logs (outside VPC) -->
+    <mxCell id="cloudwatch" value="CloudWatch Logs" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.cloudwatch_2;fillColor=#E7157B;strokeColor=#E7157B;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+      <mxGeometry x="1260" y="310" width="60" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- Secrets Manager Service (outside VPC) -->
+    <mxCell id="sm-service" value="Secrets Manager" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.secrets_manager;fillColor=#DD344C;strokeColor=#DD344C;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+      <mxGeometry x="1260" y="130" width="60" height="60" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: Lambda to Aurora (Port 5432) -->
+    <mxCell id="e1" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#E65100;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="aurora" parent="subnets">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: Lambda to VPC EP Secrets Manager (443) -->
+    <mxCell id="e2" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-sm" parent="subnets">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: Lambda to VPC EP CloudWatch (443) -->
+    <mxCell id="e3" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-cw" parent="subnets">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: Lambda to VPC EP OpenSearch (443) -->
+    <mxCell id="e4" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-oss" parent="subnets">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: VPC EP SM to Secrets Manager Service (PrivateLink) -->
+    <mxCell id="e5" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#DD344C;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-sm" target="sm-service" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: VPC EP CW to CloudWatch Logs (PrivateLink) -->
+    <mxCell id="e6" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#E7157B;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-cw" target="cloudwatch" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- Edge: VPC EP OSS to OpenSearch Serverless (PrivateLink) -->
+    <mxCell id="e7" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#8C4FFF;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-oss" target="opensearch" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>
