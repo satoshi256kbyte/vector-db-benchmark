@@ -7,6 +7,7 @@ import { BulkIngestConstruct } from "./constructs/bulk-ingest";
 import { NetworkConstruct } from "./constructs/network";
 import { OpenSearchConstruct } from "./constructs/opensearch";
 import { S3VectorsConstruct } from "./constructs/s3vectors";
+import { SearchTestConstruct } from "./constructs/search-test";
 import { VerifyFunctionConstruct } from "./constructs/verify-function";
 
 export class VectorDbBenchmarkStack extends cdk.Stack {
@@ -82,6 +83,18 @@ export class VectorDbBenchmarkStack extends cdk.Stack {
       openSearch.collectionEndpoint,
     );
 
+    // 9. SearchTest: 検索テスト Lambda（lambdaRole を共用）
+    const searchTest = new SearchTestConstruct(this, "SearchTest", {
+      vpc: network.vpc,
+      lambdaSg: network.lambdaSg,
+      auroraCluster: aurora.cluster,
+      auroraSecret: aurora.secret,
+      opensearchCollectionEndpoint: openSearch.collectionEndpoint,
+      s3vectorsBucketName: s3vectors.vectorBucketName,
+      s3vectorsIndexName: s3vectors.indexName,
+      role: lambdaRole,
+    });
+
     // Construct 間の依存関係
     aurora.node.addDependency(network);
     openSearch.node.addDependency(network);
@@ -89,6 +102,9 @@ export class VectorDbBenchmarkStack extends cdk.Stack {
     verifyFunction.node.addDependency(aurora);
     verifyFunction.node.addDependency(network);
     verifyFunction.node.addDependency(s3vectors);
+    searchTest.node.addDependency(aurora);
+    searchTest.node.addDependency(network);
+    searchTest.node.addDependency(s3vectors);
 
     // cdk-nag suppressions
     this.addNagSuppressions(lambdaRole);

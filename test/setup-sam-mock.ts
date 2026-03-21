@@ -7,12 +7,13 @@ import * as path from "path";
  * ディレクトリの存在を要求するため、テスト用のダミーファイルを配置する。
  */
 export default function setup(): void {
-  const samBuildDir = path.resolve(
-    ".aws-sam/build/VectorVerifyFunction",
-  );
-  fs.mkdirSync(samBuildDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(samBuildDir, "handler.py"),
-    "# mock handler",
-  );
+  const functions = ["VectorVerifyFunction", "SearchTestFunction"];
+  for (const fn of functions) {
+    const samBuildDir = path.resolve(`.aws-sam/build/${fn}`);
+    fs.mkdirSync(samBuildDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(samBuildDir, "handler.py"),
+      "# mock handler",
+    );
+  }
 }
