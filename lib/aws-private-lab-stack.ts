@@ -5,6 +5,7 @@ import { Construct } from "constructs";
 import { AuroraConstruct } from "./constructs/aurora";
 import { NetworkConstruct } from "./constructs/network";
 import { OpenSearchConstruct } from "./constructs/opensearch";
+import { S3VectorsConstruct } from "./constructs/s3vectors";
 import { VerifyFunctionConstruct } from "./constructs/verify-function";
 
 export class AwsPrivateLabStack extends cdk.Stack {
@@ -31,14 +32,17 @@ export class AwsPrivateLabStack extends cdk.Stack {
       ],
     });
 
-    // 4. OpenSearch Serverless: lambdaRole ARN を渡す
+    // 4. S3 Vectors: フルマネージドサービスのため VPC/SG 不要
+    const s3vectors = new S3VectorsConstruct(this, "S3Vectors");
+
+    // 5. OpenSearch Serverless: lambdaRole ARN を渡す
     const openSearch = new OpenSearchConstruct(this, "OpenSearch", {
       vpc: network.vpc,
       vpcEndpointSg: network.vpcEndpointSg,
       lambdaRoleArn: lambdaRole.roleArn,
     });
 
-    // 5. VerifyFunction: 事前作成した role を渡す（opensearchEndpoint は後で設定）
+    // 6. VerifyFunction: 事前作成した role を渡す
     const verifyFunction = new VerifyFunctionConstruct(
       this,
       "VerifyFunction",
@@ -47,11 +51,13 @@ export class AwsPrivateLabStack extends cdk.Stack {
         lambdaSg: network.lambdaSg,
         auroraCluster: aurora.cluster,
         auroraSecret: aurora.secret,
+        s3vectorsBucketName: s3vectors.vectorBucketName,
+        s3vectorsIndexName: s3vectors.indexName,
         role: lambdaRole,
       },
     );
 
-    // 6. OpenSearch エンドポイントを Lambda 環境変数に追加
+    // 7. OpenSearch エンドポイントを Lambda 環境変数に追加
     verifyFunction.function.addEnvironment(
       "OPENSEARCH_ENDPOINT",
       openSearch.collectionEndpoint,
@@ -62,6 +68,7 @@ export class AwsPrivateLabStack extends cdk.Stack {
     openSearch.node.addDependency(network);
     verifyFunction.node.addDependency(aurora);
     verifyFunction.node.addDependency(network);
+    verifyFunction.node.addDependency(s3vectors);
 
     // cdk-nag suppressions
     this.addNagSuppressions(lambdaRole);
@@ -86,7 +93,7 @@ export class AwsPrivateLabStack extends cdk.Stack {
       {
         id: "AwsSolutions-IAM5",
         reason:
-          "Wildcard permissions required for aoss:APIAccessAll (OpenSearch Serverless does not support resource-level permissions) and Secrets Manager access",
+          "Wildcard permissions required for aoss:APIAccessAll (OpenSearch Serverless does not support resource-level permissions), s3vectors actions (S3 Vectors does not support resource-level permissions), and Secrets Manager access",
       },
       {
         id: "AwsSolutions-IAM4",
