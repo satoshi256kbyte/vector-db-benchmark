@@ -229,3 +229,90 @@ class TestS3VectorsIngesterIngestAll:
         assert mock_client.put_vectors.call_count == 3
         assert mock_sleep.call_count == 2
         mock_sleep.assert_has_calls([call(2), call(2)])
+
+
+# ---------------------------------------------------------------------------
+# Property 2: バッチ投入の呼び出し回数 (Hypothesis)
+# ---------------------------------------------------------------------------
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+
+def _stub_vector(seed: int) -> list[float]:
+    """テスト用の軽量ベクトル生成スタブ（1536次元の生成コストを回避）."""
+    return [float(seed)]
+
+
+class TestProperty2BatchInvocationCount:
+    """Property 2: バッチ投入の呼び出し回数.
+
+    任意の正の整数 record_count と正の整数 batch_size に対して、
+    バッチ投入関数が発行するバッチ API 呼び出し回数は
+    ceil(record_count / batch_size) に等しいこと。
+
+    Feature: 03-vector-benchmark-execution, Property 2: バッチ投入の呼び出し回数
+
+    **Validates: Requirements 4.4, 4.5, 4.6**
+    """
+
+    @given(
+        record_count=st.integers(min_value=1, max_value=5000),
+        batch_size=st.integers(min_value=1, max_value=1000),
+    )
+    @settings(max_examples=200, deadline=None)
+    @patch("ingestion.generate_vector", side_effect=_stub_vector)
+    @patch("ingestion.time.sleep")
+    def test_aurora_batch_call_count(
+        self, mock_sleep: MagicMock, mock_gen: MagicMock, record_count: int, batch_size: int
+    ) -> None:
+        """AuroraIngester の cursor.execute 呼び出し回数が ceil(record_count / batch_size) と一致すること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        ingester = AuroraIngester(mock_conn)
+        ingester.ingest_all(record_count, batch_size)
+
+        expected_calls = math.ceil(record_count / batch_size)
+        assert mock_cursor.execute.call_count == expected_calls
+
+    @given(
+        record_count=st.integers(min_value=1, max_value=5000),
+        batch_size=st.integers(min_value=1, max_value=1000),
+    )
+    @settings(max_examples=200, deadline=None)
+    @patch("ingestion.generate_vector", side_effect=_stub_vector)
+    @patch("ingestion.time.sleep")
+    def test_opensearch_batch_call_count(
+        self, mock_sleep: MagicMock, mock_gen: MagicMock, record_count: int, batch_size: int
+    ) -> None:
+        """OpenSearchIngester の client.bulk 呼び出し回数が ceil(record_count / batch_size) と一致すること."""
+        mock_client = MagicMock()
+        mock_client.bulk.return_value = {"errors": False, "items": []}
+
+        ingester = OpenSearchIngester(mock_client)
+        ingester.ingest_all(record_count, batch_size)
+
+        expected_calls = math.ceil(record_count / batch_size)
+        assert mock_client.bulk.call_count == expected_calls
+
+    @given(
+        record_count=st.integers(min_value=1, max_value=5000),
+        batch_size=st.integers(min_value=1, max_value=1000),
+    )
+    @settings(max_examples=200, deadline=None)
+    @patch("ingestion.generate_vector", side_effect=_stub_vector)
+    @patch("ingestion.time.sleep")
+    def test_s3vectors_batch_call_count(
+        self, mock_sleep: MagicMock, mock_gen: MagicMock, record_count: int, batch_size: int
+    ) -> None:
+        """S3VectorsIngester の client.put_vectors 呼び出し回数が ceil(record_count / batch_size) と一致すること."""
+        mock_client = MagicMock()
+
+        ingester = S3VectorsIngester(mock_client, "test-bucket", "test-index")
+        ingester.ingest_all(record_count, batch_size)
+
+        expected_calls = math.ceil(record_count / batch_size)
+        assert mock_client.put_vectors.call_count == expected_calls
