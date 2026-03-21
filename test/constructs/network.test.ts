@@ -29,8 +29,8 @@ describe("NetworkConstruct", () => {
   });
 
   describe("VPC Endpoints", () => {
-    test("VPC Interface Endpoint が 4 つ存在する", () => {
-      template.resourceCountIs("AWS::EC2::VPCEndpoint", 4);
+    test("VPC Interface Endpoint が 6 つ、Gateway Endpoint が 1 つ存在する", () => {
+      template.resourceCountIs("AWS::EC2::VPCEndpoint", 7);
     });
 
     test("Secrets Manager の VPC Endpoint が作成される", () => {
@@ -94,6 +94,54 @@ describe("NetworkConstruct", () => {
           ],
         },
         VpcEndpointType: "Interface",
+      });
+    });
+
+    test("ECR API の VPC Endpoint が作成される", () => {
+      template.hasResourceProperties("AWS::EC2::VPCEndpoint", {
+        ServiceName: {
+          "Fn::Join": [
+            "",
+            [
+              "com.amazonaws.",
+              { Ref: "AWS::Region" },
+              ".ecr.api",
+            ],
+          ],
+        },
+        VpcEndpointType: "Interface",
+      });
+    });
+
+    test("ECR Docker の VPC Endpoint が作成される", () => {
+      template.hasResourceProperties("AWS::EC2::VPCEndpoint", {
+        ServiceName: {
+          "Fn::Join": [
+            "",
+            [
+              "com.amazonaws.",
+              { Ref: "AWS::Region" },
+              ".ecr.dkr",
+            ],
+          ],
+        },
+        VpcEndpointType: "Interface",
+      });
+    });
+
+    test("S3 Gateway VPC Endpoint が作成される", () => {
+      template.hasResourceProperties("AWS::EC2::VPCEndpoint", {
+        ServiceName: {
+          "Fn::Join": [
+            "",
+            [
+              "com.amazonaws.",
+              { Ref: "AWS::Region" },
+              ".s3",
+            ],
+          ],
+        },
+        VpcEndpointType: "Gateway",
       });
     });
   });

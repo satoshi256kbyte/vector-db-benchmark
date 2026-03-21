@@ -142,5 +142,25 @@ export class NetworkConstruct extends Construct {
       subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [this.vpcEndpointSg],
     });
+
+    // VPC Endpoint: ECR API
+    this.vpc.addInterfaceEndpoint("EcrApiEndpoint", {
+      service: ec2.InterfaceVpcEndpointAwsService.ECR,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [this.vpcEndpointSg],
+    });
+
+    // VPC Endpoint: ECR Docker
+    this.vpc.addInterfaceEndpoint("EcrDockerEndpoint", {
+      service: ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [this.vpcEndpointSg],
+    });
+
+    // VPC Endpoint: S3 Gateway (for ECR image layers)
+    this.vpc.addGatewayEndpoint("S3GatewayEndpoint", {
+      service: ec2.GatewayVpcEndpointAwsService.S3,
+      subnets: [{ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }],
+    });
   }
 }
