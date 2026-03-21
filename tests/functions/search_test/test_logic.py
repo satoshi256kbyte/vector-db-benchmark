@@ -361,3 +361,65 @@ class TestCalculateLatencyStatsEdgeCases:
         assert stats.min_ms == 10.0
         assert stats.max_ms == 20.0
         assert stats.avg_ms == 15.0
+
+
+
+# --- 追加: Property 4 プロパティテスト (Task 6.5) ---
+
+
+class TestProperty4SearchQueryExecutionCount:
+    """Property 4: 検索クエリ実行回数とレイテンシ追跡.
+
+    任意の正の整数 search_count に対して、検索テスト関数は各 DB に対して
+    正確に search_count 回のクエリを実行し、search_count 個のレイテンシ計測値を記録すること。
+
+    **Validates: Requirements 5.3, 5.4, 7.3**
+    Feature: 03-vector-benchmark-execution, Property 4: 検索クエリ実行回数とレイテンシ追跡
+    """
+
+    search_count_strategy = st.integers(min_value=1, max_value=50)
+
+    @given(search_count=st.integers(min_value=1, max_value=50))
+    @settings(max_examples=100)
+    def test_aurora_executes_exact_query_count(self, search_count: int) -> None:
+        """Aurora に対して正確に search_count 回のクエリが実行されること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        vectors = [[0.1] * 10 for _ in range(search_count)]
+        result = search_aurora(mock_conn, vectors, 5)
+
+        assert result.search_count == search_count
+        assert result.success is True
+        assert mock_cursor.execute.call_count == search_count
+
+    @given(search_count=st.integers(min_value=1, max_value=50))
+    @settings(max_examples=100)
+    def test_opensearch_executes_exact_query_count(self, search_count: int) -> None:
+        """OpenSearch に対して正確に search_count 回のクエリが実行されること."""
+        mock_client = MagicMock()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        vectors = [[0.1] * 10 for _ in range(search_count)]
+        result = search_opensearch(mock_client, vectors, 5)
+
+        assert result.search_count == search_count
+        assert result.success is True
+        assert mock_client.search.call_count == search_count
+
+    @given(search_count=st.integers(min_value=1, max_value=50))
+    @settings(max_examples=100)
+    def test_s3vectors_executes_exact_query_count(self, search_count: int) -> None:
+        """S3 Vectors に対して正確に search_count 回のクエリが実行されること."""
+        mock_client = MagicMock()
+        mock_client.query_vectors.return_value = {"vectors": []}
+
+        vectors = [[0.1] * 10 for _ in range(search_count)]
+        result = search_s3vectors(mock_client, "bucket", "index", vectors, 5)
+
+        assert result.search_count == search_count
+        assert result.success is True
+        assert mock_client.query_vectors.call_count == search_count
