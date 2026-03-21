@@ -151,6 +151,13 @@ describe("NetworkConstruct", () => {
       template.resourceCountIs("AWS::EC2::SecurityGroup", 4);
     });
 
+    test("ECS SG が vdbbench-dev-sg-ecs の名前で作成される", () => {
+      template.hasResourceProperties("AWS::EC2::SecurityGroup", {
+        GroupName: "vdbbench-dev-sg-ecs",
+        GroupDescription: "Security group for ECS Fargate tasks",
+      });
+    });
+
     test("Lambda SG から Aurora SG へのポート 5432 のエグレスルールが存在する", () => {
       template.hasResourceProperties("AWS::EC2::SecurityGroupEgress", {
         IpProtocol: "tcp",
@@ -169,6 +176,24 @@ describe("NetworkConstruct", () => {
       });
     });
 
+    test("ECS SG から Aurora SG へのポート 5432 のエグレスルールが存在する", () => {
+      template.hasResourceProperties("AWS::EC2::SecurityGroupEgress", {
+        IpProtocol: "tcp",
+        FromPort: 5432,
+        ToPort: 5432,
+        Description: "Allow ECS to Aurora on port 5432",
+      });
+    });
+
+    test("ECS SG から VPC EP SG へのポート 443 のエグレスルールが存在する", () => {
+      template.hasResourceProperties("AWS::EC2::SecurityGroupEgress", {
+        IpProtocol: "tcp",
+        FromPort: 443,
+        ToPort: 443,
+        Description: "Allow ECS to VPC endpoints on port 443",
+      });
+    });
+
     test("Aurora SG に Lambda SG からのポート 5432 のインバウンドルールが存在する", () => {
       template.hasResourceProperties("AWS::EC2::SecurityGroupIngress", {
         IpProtocol: "tcp",
@@ -178,12 +203,30 @@ describe("NetworkConstruct", () => {
       });
     });
 
+    test("Aurora SG に ECS SG からのポート 5432 のインバウンドルールが存在する", () => {
+      template.hasResourceProperties("AWS::EC2::SecurityGroupIngress", {
+        IpProtocol: "tcp",
+        FromPort: 5432,
+        ToPort: 5432,
+        Description: "Allow inbound from ECS on port 5432",
+      });
+    });
+
     test("VPC EP SG に Lambda SG からのポート 443 のインバウンドルールが存在する", () => {
       template.hasResourceProperties("AWS::EC2::SecurityGroupIngress", {
         IpProtocol: "tcp",
         FromPort: 443,
         ToPort: 443,
         Description: "Allow inbound from Lambda on port 443",
+      });
+    });
+
+    test("VPC EP SG に ECS SG からのポート 443 のインバウンドルールが存在する", () => {
+      template.hasResourceProperties("AWS::EC2::SecurityGroupIngress", {
+        IpProtocol: "tcp",
+        FromPort: 443,
+        ToPort: 443,
+        Description: "Allow inbound from ECS on port 443",
       });
     });
   });
