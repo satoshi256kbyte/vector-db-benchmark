@@ -24,6 +24,7 @@ describe("OpenSearchConstruct", () => {
       {
         Name: "vdbbench-dev-oss-vector",
         Type: "VECTORSEARCH",
+        StandbyReplicas: "DISABLED",
       },
     );
   });

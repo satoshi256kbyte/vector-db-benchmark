@@ -20,15 +20,15 @@ export class OpenSearchConstruct extends Construct {
     const collectionName = "vdbbench-dev-oss-vector";
 
     // OCU制限: AwsCustomResource で UpdateAccountSettings API を呼び出し
-    // インデックス用・検索用それぞれ Max 4
+    // インデックス用・検索用それぞれ Max 2（コスト最小化）
     new cr.AwsCustomResource(this, "AccountSettings", {
       onCreate: {
         service: "OpenSearchServerless",
         action: "UpdateAccountSettings",
         parameters: {
           capacityLimits: {
-            maxIndexingCapacityInOCU: 4,
-            maxSearchCapacityInOCU: 4,
+            maxIndexingCapacityInOCU: 2,
+            maxSearchCapacityInOCU: 2,
           },
         },
         physicalResourceId: cr.PhysicalResourceId.of("aoss-account-settings"),
@@ -38,8 +38,8 @@ export class OpenSearchConstruct extends Construct {
         action: "UpdateAccountSettings",
         parameters: {
           capacityLimits: {
-            maxIndexingCapacityInOCU: 4,
-            maxSearchCapacityInOCU: 4,
+            maxIndexingCapacityInOCU: 2,
+            maxSearchCapacityInOCU: 2,
           },
         },
         physicalResourceId: cr.PhysicalResourceId.of("aoss-account-settings"),
@@ -150,13 +150,14 @@ export class OpenSearchConstruct extends Construct {
       },
     );
 
-    // コレクション: VECTORSEARCH タイプ
+    // コレクション: VECTORSEARCH タイプ（冗長スタンバイ無効でコスト最小化）
     this.collection = new opensearchserverless.CfnCollection(
       this,
       "Collection",
       {
         name: collectionName,
         type: "VECTORSEARCH",
+        standbyReplicas: "DISABLED",
       },
     );
 

@@ -21,7 +21,7 @@ export class AuroraConstruct extends Construct {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_16_4,
       }),
-      serverlessV2MinCapacity: 0.5,
+      serverlessV2MinCapacity: 0,
       serverlessV2MaxCapacity: 16,
       writer: rds.ClusterInstance.serverlessV2("writer"),
       vpc: props.vpc,
