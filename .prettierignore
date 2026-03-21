@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+coverage
+cdk.out
+*.min.js
+*.py
+__pycache__
+.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
