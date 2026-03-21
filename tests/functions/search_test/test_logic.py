@@ -1,4 +1,4 @@
-"""レイテンシ統計算出のプロパティベーステスト.
+"""検索テスト logic.py のプロパティベーステスト・ユニットテスト.
 
 Property 5: レイテンシ統計算出の正確性
 """
@@ -10,23 +10,49 @@ import math
 import sys
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import MagicMock
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 
+def _passthrough_decorator(func=None, **kwargs):  # noqa: ANN001, ANN003
+    """Powertools デコレータのパススルーモック."""
+    if func is not None:
+        return func
+    return _passthrough_decorator
+
+
 def _import_search_test_logic() -> ModuleType:
-    """functions/search-test/logic.py を明示的にインポートする.
+    """functions/search-test/logic.py を外部依存モック付きでインポートする.
 
     pythonpath に functions/vector-verify が先に登録されているため、
     functions/search-test を一時的に優先してインポートする。
+    aws_lambda_powertools 等の外部依存はモックで差し替える。
     """
     search_test_dir = str(Path(__file__).resolve().parent.parent.parent.parent / "functions" / "search-test")
+
+    # 外部依存のモック設定
+    mock_powertools = MagicMock()
+    mock_powertools.Logger.return_value = MagicMock()
+    mock_powertools.Tracer.return_value = MagicMock()
+
+    ext_mocks: dict[str, MagicMock] = {
+        "psycopg2": MagicMock(),
+        "psycopg2.extensions": MagicMock(),
+        "opensearchpy": MagicMock(),
+        "requests_aws4auth": MagicMock(),
+        "aws_lambda_powertools": mock_powertools,
+    }
 
     # 現在の sys.path と sys.modules を保存
     original_path = sys.path[:]
     saved_logic = sys.modules.pop("logic", None)
     saved_models = sys.modules.pop("models", None)
+    saved_ext: dict[str, object] = {}
+    for mod_name, mock in ext_mocks.items():
+        saved_ext[mod_name] = sys.modules.get(mod_name)
+        sys.modules[mod_name] = mock
 
     try:
         # functions/search-test を先頭に挿入
@@ -39,14 +65,20 @@ def _import_search_test_logic() -> ModuleType:
     finally:
         # sys.path を復元
         sys.path[:] = original_path
-        # インポートした search-test の logic/models はキャッシュに残す（別名で退避）
-        _search_logic = sys.modules.pop("logic", None)
-        _search_models = sys.modules.pop("models", None)
+        # インポートした search-test の logic/models をキャッシュから退避
+        sys.modules.pop("logic", None)
+        sys.modules.pop("models", None)
         # 元のモジュールキャッシュを復元
         if saved_logic is not None:
             sys.modules["logic"] = saved_logic
         if saved_models is not None:
             sys.modules["models"] = saved_models
+        # 外部依存モックを復元
+        for mod_name in ext_mocks:
+            if saved_ext[mod_name] is not None:
+                sys.modules[mod_name] = saved_ext[mod_name]  # type: ignore[assignment]
+            else:
+                sys.modules.pop(mod_name, None)
 
 
 # モジュールレベルでインポート（他テストモジュールへの影響を回避）
