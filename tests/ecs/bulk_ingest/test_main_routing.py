@@ -194,3 +194,105 @@ class TestProperty2InvalidTargetDBRejection:
                 assert not im_mock.create_index.called, (
                     f"{im_name} index_manager.create_index() should NOT be called for invalid TARGET_DB={target_db!r}"
                 )
+
+
+class TestProperty7TaskModeRoutingAccuracy:
+    """Property 7: TASK_MODE ルーティングの正確性.
+
+    任意の有効な TASK_MODE 値（index_drop、index_create）と有効な TARGET_DB に対して、
+    ECS タスクは対応するインデックス操作のみを実行し、データ投入は一切実行しないこと。
+
+    **Validates: Requirements 4.3, 4.4**
+    Feature: 04-benchmark-shell-script, Property 7: TASK_MODE ルーティングの正確性
+    """
+
+    @given(
+        task_mode=st.sampled_from(["index_drop", "index_create"]),
+        target_db=st.sampled_from(["aurora", "opensearch", "s3vectors"]),
+    )
+    @settings(max_examples=100)
+    def test_task_mode_executes_only_corresponding_index_operation(
+        self, task_mode: str, target_db: str
+    ) -> None:
+        """TASK_MODE に対応するインデックス操作のみが実行され、データ投入は行われないこと."""
+        mock_aurora_conn = MagicMock()
+        mock_os_client = MagicMock()
+
+        mock_aurora_ingester = MagicMock()
+        mock_os_ingester = MagicMock()
+        mock_s3v_ingester = MagicMock()
+
+        mock_aurora_im = MagicMock()
+        mock_os_im = MagicMock()
+        mock_s3v_im = MagicMock()
+
+        env = {
+            "TARGET_DB": target_db,
+            "TASK_MODE": task_mode,
+            "RECORD_COUNT": "100",
+            "S3VECTORS_BUCKET_NAME": "test-bucket",
+            "S3VECTORS_INDEX_NAME": "test-index",
+        }
+
+        im_map: dict[str, MagicMock] = {
+            "aurora": mock_aurora_im,
+            "opensearch": mock_os_im,
+            "s3vectors": mock_s3v_im,
+        }
+
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch("main._get_aurora_connection", return_value=mock_aurora_conn),
+            patch("main._get_opensearch_client", return_value=mock_os_client),
+            patch("main.AuroraIngester", return_value=mock_aurora_ingester),
+            patch("main.OpenSearchIngester", return_value=mock_os_ingester),
+            patch("main.S3VectorsIngester", return_value=mock_s3v_ingester),
+            patch("main.AuroraIndexManager", return_value=mock_aurora_im),
+            patch("main.OpenSearchIndexManager", return_value=mock_os_im),
+            patch("main.S3VectorsIndexManager", return_value=mock_s3v_im),
+        ):
+            main.main()
+
+            # 対象 DB の index_manager で正しい操作が呼ばれたことを検証
+            target_im = im_map[target_db]
+            if task_mode == "index_drop":
+                assert target_im.drop_index.called, (
+                    f"Expected {target_db} index_manager.drop_index() to be called "
+                    f"when TASK_MODE={task_mode}"
+                )
+                assert not target_im.create_index.called, (
+                    f"{target_db} index_manager.create_index() should NOT be called "
+                    f"when TASK_MODE={task_mode}"
+                )
+            else:
+                assert target_im.create_index.called, (
+                    f"Expected {target_db} index_manager.create_index() to be called "
+                    f"when TASK_MODE={task_mode}"
+                )
+                assert not target_im.drop_index.called, (
+                    f"{target_db} index_manager.drop_index() should NOT be called "
+                    f"when TASK_MODE={task_mode}"
+                )
+
+            # 他の DB の index_manager は一切呼ばれていないことを検証
+            for db_name, im_mock in im_map.items():
+                if db_name != target_db:
+                    assert not im_mock.drop_index.called, (
+                        f"{db_name} index_manager.drop_index() should NOT be called "
+                        f"when TARGET_DB={target_db}, TASK_MODE={task_mode}"
+                    )
+                    assert not im_mock.create_index.called, (
+                        f"{db_name} index_manager.create_index() should NOT be called "
+                        f"when TARGET_DB={target_db}, TASK_MODE={task_mode}"
+                    )
+
+            # データ投入（ingest_all）が一切呼ばれていないことを検証
+            for db_name, ingester in [
+                ("aurora", mock_aurora_ingester),
+                ("opensearch", mock_os_ingester),
+                ("s3vectors", mock_s3v_ingester),
+            ]:
+                assert not ingester.ingest_all.called, (
+                    f"{db_name} ingester.ingest_all() should NOT be called "
+                    f"when TASK_MODE={task_mode}"
+                )
