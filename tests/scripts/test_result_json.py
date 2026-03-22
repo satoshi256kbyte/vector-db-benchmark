@@ -55,7 +55,10 @@ SUMMARY_RESULTS_KEYS = {"aurora_pgvector", "opensearch", "s3vectors"}
 # サマリー cost_summary 内の必須キー
 SUMMARY_COST_SUMMARY_KEYS = {
     "aurora_acu_peak",
-    "opensearch_ocu_max",
+    "aurora_acu_cost_usd",
+    "opensearch_ocu_peak",
+    "opensearch_ocu_cost_usd",
+    "s3vectors_cost_usd",
     "fargate_total_seconds",
     "fargate_vcpu",
     "fargate_memory_gb",
@@ -324,7 +327,7 @@ class TestProperty5SummaryJson:
         total_duration=st.integers(min_value=1, max_value=86400),
         fargate_total=st.integers(min_value=1, max_value=86400),
         aurora_acu_peak=st.integers(min_value=0, max_value=128),
-        opensearch_ocu_max=st.integers(min_value=0, max_value=50),
+        opensearch_ocu_peak=st.integers(min_value=0, max_value=50),
     )
     @settings(max_examples=100, deadline=None)
     def test_summary_contains_all_required_fields(
@@ -333,7 +336,7 @@ class TestProperty5SummaryJson:
         total_duration: int,
         fargate_total: int,
         aurora_acu_peak: int,
-        opensearch_ocu_max: int,
+        opensearch_ocu_peak: int,
     ) -> None:
         """任意の入力パラメータでサマリー JSON が必須フィールドを全て含むこと."""
         tmp_dir = tempfile.mkdtemp()
@@ -341,7 +344,7 @@ class TestProperty5SummaryJson:
             benchmark_id = "20250115-100000"
             region = "ap-northeast-1"
 
-            # 各 DB の個別結果 JSON を事前に作成
+            # 各 DB の個別結果 JSON を事前に作成（service_cost_usd を含む）
             for db_name, prefix in [("aurora_pgvector", "aurora"), ("opensearch", "opensearch"), ("s3vectors", "s3vectors")]:
                 individual = {
                     "database": db_name,
@@ -359,6 +362,9 @@ class TestProperty5SummaryJson:
                     "acu_before": 0,
                     "acu_during": 8,
                     "acu_after": 0,
+                    "opensearch_ocu_peak": 0,
+                    "index_create_duration_seconds": 0,
+                    "service_cost_usd": 0.5,
                     "success": True,
                     "error_message": None,
                 }
@@ -370,6 +376,8 @@ class TestProperty5SummaryJson:
 
             generate_summary_func = _read_generate_summary_function()
 
+            # generate_summary は 8 引数: total_duration, fargate_total, fargate_cost,
+            # aurora_acu_peak, opensearch_ocu_peak, aurora_service_cost, opensearch_service_cost, s3vectors_service_cost
             script = f"""
 set -euo pipefail
 RESULT_DIR="{tmp_dir}"
@@ -380,7 +388,7 @@ log_info() {{ echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $*"; }}
 
 {generate_summary_func}
 
-generate_summary {total_duration} {fargate_total} {fargate_cost} {aurora_acu_peak} {opensearch_ocu_max}
+generate_summary {total_duration} {fargate_total} {fargate_cost} {aurora_acu_peak} {opensearch_ocu_peak} 0.5 0.5 0.5
 """
 
             result = _run_bash_script(script)

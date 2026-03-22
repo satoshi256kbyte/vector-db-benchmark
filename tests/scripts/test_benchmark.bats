@@ -203,6 +203,7 @@ setup() {
         generate_summary() { :; }
         print_summary() { :; }
         calculate_fargate_cost() { echo "0"; }
+        jq() { echo "0"; }
         main
         echo "$ORDER"
     '
@@ -229,9 +230,74 @@ setup() {
         generate_summary() { :; }
         print_summary() { :; }
         calculate_fargate_cost() { echo "0"; }
+        jq() { echo "0"; }
         main
         echo "CALL_COUNT=$CALL_COUNT"
     '
     [ "$status" -eq 0 ]
     [[ "$output" == *"CALL_COUNT=3"* ]]
+}
+
+# =============================================================================
+# テスト: Aurora ACU コスト算出
+# =============================================================================
+
+@test "calculate_aurora_acu_cost: ACU ピーク値と秒数から概算コストを算出する" {
+    # $0.12/ACU/hour * 5 ACU * (3600s / 3600) = $0.60
+    local result
+    result=$(calculate_aurora_acu_cost 5 3600)
+    # bc の出力は .6000 のようになる場合がある
+    [[ "$result" == *"6000"* ]] || [[ "$result" == *".60"* ]]
+}
+
+@test "calculate_aurora_acu_cost: ACU 0 の場合コスト 0" {
+    local result
+    result=$(calculate_aurora_acu_cost 0 3600)
+    [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
+}
+
+# =============================================================================
+# テスト: OpenSearch OCU コスト算出
+# =============================================================================
+
+@test "calculate_opensearch_ocu_cost: OCU ピーク値と秒数から概算コストを算出する" {
+    # $0.24/OCU/hour * 2 OCU * (3600s / 3600) = $0.48
+    local result
+    result=$(calculate_opensearch_ocu_cost 2 3600)
+    [[ "$result" == *"4800"* ]] || [[ "$result" == *".48"* ]]
+}
+
+@test "calculate_opensearch_ocu_cost: OCU 0 の場合コスト 0" {
+    local result
+    result=$(calculate_opensearch_ocu_cost 0 3600)
+    [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
+}
+
+# =============================================================================
+# テスト: S3 Vectors コスト算出
+# =============================================================================
+
+@test "calculate_s3vectors_cost: レコード数から PUT バイトコストを算出する" {
+    # 100000 records * 6656 bytes = 665,600,000 bytes ≈ 0.6198 GB
+    # 0.6198 GB * $0.219/GB ≈ $0.1357
+    local result
+    result=$(calculate_s3vectors_cost 100000)
+    # 結果が 0 より大きいことを確認
+    [[ $(echo "$result > 0" | bc) -eq 1 ]]
+}
+
+@test "calculate_s3vectors_cost: レコード数 0 の場合コスト 0" {
+    local result
+    result=$(calculate_s3vectors_cost 0)
+    [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
+}
+
+# =============================================================================
+# テスト: Fargate コスト算出（既存関数の追加テスト）
+# =============================================================================
+
+@test "calculate_fargate_cost: 0 秒の場合コスト 0" {
+    local result
+    result=$(calculate_fargate_cost 0)
+    [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
 }
