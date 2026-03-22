@@ -1,0 +1,160 @@
+#!/usr/bin/env bats
+# Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+# **Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8**
+
+# =============================================================================
+# ヘルパー: benchmark.sh からデフォルト値と parse_args 関数のみを安全にロードする
+# エントリポイント（parse_args "$@", check_prerequisites, main）は実行しない
+# =============================================================================
+
+setup() {
+    SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    BENCHMARK_SCRIPT="$PROJECT_ROOT/scripts/benchmark.sh"
+
+    # benchmark.sh からエントリポイント以前の部分を抽出して eval する
+    # - set -euo pipefail を無効化（テスト環境で問題を起こすため）
+    # - trap 行を除外
+    # - エントリポイントセクション以降を除外
+    eval "$(sed -n '1,/^# エントリポイント$/p' "$BENCHMARK_SCRIPT" \
+        | sed 's/^set -euo pipefail$//' \
+        | grep -v '^trap ' \
+        | grep -v '^parse_args "\$@"' \
+        | grep -v '^check_prerequisites$' \
+        | grep -v '^main$')"
+}
+
+# =============================================================================
+# テスト: 引数なしの場合、全デフォルト値が正しく設定されること
+# =============================================================================
+
+@test "デフォルト値: 引数なしで全デフォルト値が設定される" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args
+
+    [ "$RECORD_COUNT" = "100000" ]
+    [ "$AURORA_CLUSTER" = "vdbbench-dev-aurora-pgvector" ]
+    [ "$OPENSEARCH_COLLECTION" = "vdbbench-dev-oss-vector" ]
+    [ "$S3VECTORS_BUCKET" = "vdbbench-dev-s3vectors-benchmark" ]
+    [ "$ECS_CLUSTER" = "vdbbench-dev-ecs-benchmark" ]
+    [ "$REGION" = "ap-northeast-1" ]
+    [ "$AURORA_MIN_ACU" = "8" ]
+    [ "$OPENSEARCH_MAX_OCU" = "10" ]
+}
+
+# =============================================================================
+# テスト: 個別引数のオーバーライド
+# =============================================================================
+
+@test "--record-count で RECORD_COUNT がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --record-count 50000
+
+    [ "$RECORD_COUNT" = "50000" ]
+}
+
+@test "--aurora-cluster で AURORA_CLUSTER がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --aurora-cluster my-custom-cluster
+
+    [ "$AURORA_CLUSTER" = "my-custom-cluster" ]
+}
+
+@test "--opensearch-collection で OPENSEARCH_COLLECTION がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --opensearch-collection my-collection
+
+    [ "$OPENSEARCH_COLLECTION" = "my-collection" ]
+}
+
+@test "--s3vectors-bucket で S3VECTORS_BUCKET がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --s3vectors-bucket my-bucket
+
+    [ "$S3VECTORS_BUCKET" = "my-bucket" ]
+}
+
+@test "--ecs-cluster で ECS_CLUSTER がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --ecs-cluster my-ecs-cluster
+
+    [ "$ECS_CLUSTER" = "my-ecs-cluster" ]
+}
+
+@test "--region で REGION がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --region us-west-2
+
+    [ "$REGION" = "us-west-2" ]
+}
+
+@test "--aurora-min-acu で AURORA_MIN_ACU がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --aurora-min-acu 16
+
+    [ "$AURORA_MIN_ACU" = "16" ]
+}
+
+@test "--opensearch-max-ocu で OPENSEARCH_MAX_OCU がオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --opensearch-max-ocu 20
+
+    [ "$OPENSEARCH_MAX_OCU" = "20" ]
+}
+
+# =============================================================================
+# テスト: 複数引数の組み合わせ
+# =============================================================================
+
+@test "複数引数を同時に指定した場合、全て正しくオーバーライドされる" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args \
+        --record-count 200000 \
+        --aurora-cluster custom-aurora \
+        --region eu-west-1 \
+        --aurora-min-acu 4
+
+    [ "$RECORD_COUNT" = "200000" ]
+    [ "$AURORA_CLUSTER" = "custom-aurora" ]
+    [ "$REGION" = "eu-west-1" ]
+    [ "$AURORA_MIN_ACU" = "4" ]
+}
+
+@test "一部の引数のみ指定した場合、未指定の引数はデフォルト値を保持する" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args --record-count 5000 --region us-east-1
+
+    # 指定した引数はオーバーライドされる
+    [ "$RECORD_COUNT" = "5000" ]
+    [ "$REGION" = "us-east-1" ]
+
+    # 未指定の引数はデフォルト値を保持する
+    [ "$AURORA_CLUSTER" = "vdbbench-dev-aurora-pgvector" ]
+    [ "$OPENSEARCH_COLLECTION" = "vdbbench-dev-oss-vector" ]
+    [ "$S3VECTORS_BUCKET" = "vdbbench-dev-s3vectors-benchmark" ]
+    [ "$ECS_CLUSTER" = "vdbbench-dev-ecs-benchmark" ]
+    [ "$AURORA_MIN_ACU" = "8" ]
+    [ "$OPENSEARCH_MAX_OCU" = "10" ]
+}
+
+@test "全引数を同時に指定した場合、全てオーバーライドされデフォルト値は残らない" {
+    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
+    parse_args \
+        --record-count 999 \
+        --aurora-cluster a-cluster \
+        --opensearch-collection o-collection \
+        --s3vectors-bucket s-bucket \
+        --ecs-cluster e-cluster \
+        --region ap-southeast-1 \
+        --aurora-min-acu 2 \
+        --opensearch-max-ocu 5
+
+    [ "$RECORD_COUNT" = "999" ]
+    [ "$AURORA_CLUSTER" = "a-cluster" ]
+    [ "$OPENSEARCH_COLLECTION" = "o-collection" ]
+    [ "$S3VECTORS_BUCKET" = "s-bucket" ]
+    [ "$ECS_CLUSTER" = "e-cluster" ]
+    [ "$REGION" = "ap-southeast-1" ]
+    [ "$AURORA_MIN_ACU" = "2" ]
+    [ "$OPENSEARCH_MAX_OCU" = "5" ]
+}
