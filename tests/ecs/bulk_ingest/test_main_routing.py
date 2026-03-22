@@ -1,13 +1,15 @@
 """main.py ルーティングロジックのプロパティベーステスト.
 
 Property 1: TARGET_DB ルーティングの正確性
+Property 2: 無効な TARGET_DB の拒否
 """
 
 from __future__ import annotations
 
 import os
-import sys
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -117,4 +119,78 @@ class TestProperty1TargetDBRoutingAccuracy:
                 assert not im_mock.create_index.called, (
                     f"{im_name} index_manager.create_index() should NOT be called "
                     f"when TARGET_DB={target_db}"
+                )
+
+
+class TestProperty2InvalidTargetDBRejection:
+    """Property 2: 無効な TARGET_DB の拒否.
+
+    任意の文字列で、有効な TARGET_DB 値の集合（all、aurora、opensearch、s3vectors）に
+    含まれないものに対して、ECS タスクはエラーログを出力し終了コード 1 で終了すること。
+
+    **Validates: Requirements 1.5**
+    Feature: 04-benchmark-shell-script, Property 2: 無効な TARGET_DB の拒否
+    """
+
+    @given(
+        target_db=st.text(
+            alphabet=st.characters(blacklist_categories=("Cs",), blacklist_characters="\x00"),
+        ).filter(lambda s: s.lower() not in {"all", "aurora", "opensearch", "s3vectors"})
+    )
+    @settings(max_examples=100)
+    def test_invalid_target_db_exits_with_code_1(self, target_db: str) -> None:
+        """有効な TARGET_DB 集合に含まれない文字列で sys.exit(1) が呼ばれること."""
+        mock_aurora_ingester = MagicMock()
+        mock_os_ingester = MagicMock()
+        mock_s3v_ingester = MagicMock()
+        mock_aurora_im = MagicMock()
+        mock_os_im = MagicMock()
+        mock_s3v_im = MagicMock()
+
+        env = {
+            "TARGET_DB": target_db,
+            "TASK_MODE": "ingest",
+            "RECORD_COUNT": "100",
+            "S3VECTORS_BUCKET_NAME": "test-bucket",
+            "S3VECTORS_INDEX_NAME": "test-index",
+        }
+
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch("main._get_aurora_connection", return_value=MagicMock()),
+            patch("main._get_opensearch_client", return_value=MagicMock()),
+            patch("main._get_s3vectors_client", return_value=MagicMock()),
+            patch("main.AuroraIngester", return_value=mock_aurora_ingester),
+            patch("main.OpenSearchIngester", return_value=mock_os_ingester),
+            patch("main.S3VectorsIngester", return_value=mock_s3v_ingester),
+            patch("main.AuroraIndexManager", return_value=mock_aurora_im),
+            patch("main.OpenSearchIndexManager", return_value=mock_os_im),
+            patch("main.S3VectorsIndexManager", return_value=mock_s3v_im),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main.main()
+
+            assert exc_info.value.code == 1, f"Expected exit code 1, got {exc_info.value.code}"
+
+            # ingester の ingest_all() が一切呼ばれていないことを検証
+            for db_name, ingester in [
+                ("aurora", mock_aurora_ingester),
+                ("opensearch", mock_os_ingester),
+                ("s3vectors", mock_s3v_ingester),
+            ]:
+                assert not ingester.ingest_all.called, (
+                    f"{db_name} ingester.ingest_all() should NOT be called for invalid TARGET_DB={target_db!r}"
+                )
+
+            # index_manager の操作が一切呼ばれていないことを検証
+            for im_name, im_mock in [
+                ("aurora", mock_aurora_im),
+                ("opensearch", mock_os_im),
+                ("s3vectors", mock_s3v_im),
+            ]:
+                assert not im_mock.drop_index.called, (
+                    f"{im_name} index_manager.drop_index() should NOT be called for invalid TARGET_DB={target_db!r}"
+                )
+                assert not im_mock.create_index.called, (
+                    f"{im_name} index_manager.create_index() should NOT be called for invalid TARGET_DB={target_db!r}"
                 )
