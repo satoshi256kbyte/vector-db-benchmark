@@ -137,10 +137,10 @@ class TestOpenSearchIngesterIngestBatch:
         bulk_body: list[dict[str, object]] = mock_client.bulk.call_args[1]["body"]
         # 2レコード × 2エントリ（action + document）= 4
         assert len(bulk_body) == 4
-        assert bulk_body[0] == {"index": {"_index": "embeddings", "_id": "0"}}
+        assert bulk_body[0] == {"index": {"_index": "embeddings"}}
         assert bulk_body[1]["content"] == "doc-0"
         assert bulk_body[1]["embedding"] == generate_vector(seed=0)
-        assert bulk_body[2] == {"index": {"_index": "embeddings", "_id": "1"}}
+        assert bulk_body[2] == {"index": {"_index": "embeddings"}}
         assert bulk_body[3]["content"] == "doc-1"
         assert bulk_body[3]["embedding"] == generate_vector(seed=1)
 
@@ -308,11 +308,13 @@ class TestProperty2BatchInvocationCount:
     def test_s3vectors_batch_call_count(
         self, mock_sleep: MagicMock, mock_gen: MagicMock, record_count: int, batch_size: int
     ) -> None:
-        """S3VectorsIngester の client.put_vectors 呼び出し回数が ceil(record_count / batch_size) と一致すること."""
+        """S3VectorsIngester の client.put_vectors 呼び出し回数が ceil(record_count / effective_batch_size) と一致すること."""
         mock_client = MagicMock()
 
         ingester = S3VectorsIngester(mock_client, "test-bucket", "test-index")
         ingester.ingest_all(record_count, batch_size)
 
-        expected_calls = math.ceil(record_count / batch_size)
+        # S3 Vectors PutVectors API は1回あたり最大500件のため、batch_size は500に制限される
+        effective_batch_size = min(batch_size, 500)
+        expected_calls = math.ceil(record_count / effective_batch_size)
         assert mock_client.put_vectors.call_count == expected_calls

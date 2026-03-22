@@ -96,7 +96,7 @@ class OpenSearchIndexManager:
     """OpenSearch Serverless のインデックス管理.
 
     OpenSearch Serverless ではインデックスの削除→再作成による性能メリットがないため、
-    すべての操作は no-op（ログ出力のみ）となる。
+    drop_index / create_index は no-op（ログ出力のみ）となる。
     データ投入は Bulk API で既存インデックスに直接挿入する。
     """
 
@@ -107,6 +107,81 @@ class OpenSearchIndexManager:
             client: OpenSearch クライアント
         """
         self._client = client
+
+    def ensure_index(self) -> None:
+        """embeddings インデックスが存在しない場合に作成する.
+
+        既存インデックスのマッピングが期待と異なる場合は削除して再作成する。
+        冪等に動作し、正しいマッピングが既に存在する場合はスキップされる。
+        """
+        log = logger.bind(database="opensearch")
+        if self._client.indices.exists(index=INDEX_NAME):
+            # マッピングが期待通りか検証する
+            if self._is_mapping_compatible():
+                log.info("index_already_exists", index_name=INDEX_NAME)
+                return
+            log.warning(
+                "index_mapping_incompatible",
+                index_name=INDEX_NAME,
+                action="delete_and_recreate",
+            )
+            self._client.indices.delete(index=INDEX_NAME)
+            log.info("index_deleted_for_recreate", index_name=INDEX_NAME)
+
+        log.info("creating_index", index_name=INDEX_NAME)
+        body = self._index_body()
+        self._client.indices.create(index=INDEX_NAME, body=body)
+        log.info("index_created", index_name=INDEX_NAME)
+
+    def _is_mapping_compatible(self) -> bool:
+        """既存インデックスの embedding フィールドが knn_vector かどうかを検証する.
+
+        Returns:
+            マッピングが互換であれば True
+        """
+        log = logger.bind(database="opensearch")
+        try:
+            mapping = self._client.indices.get_mapping(index=INDEX_NAME)
+            props = mapping[INDEX_NAME]["mappings"].get("properties", {})
+            emb = props.get("embedding", {})
+            emb_type = emb.get("type")
+            is_compatible = emb_type == "knn_vector"
+            if not is_compatible:
+                log.info("mapping_check_detail", embedding_type=emb_type, expected="knn_vector")
+            return is_compatible
+        except Exception as e:
+            log.warning("mapping_check_failed", error=str(e))
+            return False
+
+    @staticmethod
+    def _index_body() -> dict[str, object]:
+        """embeddings インデックスのボディ定義を返す."""
+        return {
+            "settings": {
+                "index": {
+                    "knn": True,
+                },
+            },
+            "mappings": {
+                "properties": {
+                    "id": {"type": "integer"},
+                    "content": {"type": "text"},
+                    "embedding": {
+                        "type": "knn_vector",
+                        "dimension": VECTOR_DIMENSION,
+                        "method": {
+                            "name": "hnsw",
+                            "space_type": "cosinesimil",
+                            "engine": "nmslib",
+                            "parameters": {
+                                "ef_construction": 128,
+                                "m": 16,
+                            },
+                        },
+                    },
+                },
+            },
+        }
 
     def drop_index(self) -> None:
         """No-op: OpenSearch Serverless ではインデックス削除→再作成の効果がない."""

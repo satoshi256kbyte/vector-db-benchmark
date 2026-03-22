@@ -20,7 +20,7 @@ REGION="ap-northeast-1"
 # =============================================================================
 # プレースホルダー変数（後続タスクで設定）
 # =============================================================================
-TASK_DEFINITION=""
+TASK_DEFINITION="vdbbench-dev-ecs-bulk-ingest"
 AURORA_SECRET_ARN=""
 SUBNET_IDS=""
 SECURITY_GROUP_ID=""
@@ -427,9 +427,11 @@ run_ecs_task() {
 # 結果はグローバル変数 ECS_COUNT_RESULT に設定される
 get_record_count() {
     local target_db="$1"
-    log_info "${target_db} のレコード数を取得中（ECS タスク経由）..."
+    log_info "${target_db} のレコード数を取得中（ECS タスク経由）..." >&2
 
-    if run_ecs_task_with_mode "$target_db" "count"; then
+    # run_ecs_task_with_mode の log_info 出力が stdout に混入するのを防ぐため、
+    # stdout を stderr にリダイレクトして実行する（結果は ECS_COUNT_RESULT グローバル変数経由）
+    if run_ecs_task_with_mode "$target_db" "count" >&2; then
         echo "$ECS_COUNT_RESULT"
     else
         log_error "${target_db} のレコード数取得に失敗しました"
@@ -503,7 +505,7 @@ collect_task_logs() {
 # グローバル変数 START_TIME, END_TIME を使用してメトリクス期間を指定する
 # ピーク値を stdout に出力し、時系列データを RESULT_DIR/aurora-acu-timeseries.json に保存する
 collect_aurora_metrics() {
-    log_info "Aurora ACU メトリクスを取得中..."
+    log_info "Aurora ACU メトリクスを取得中..." >&2
 
     local metric_json
     metric_json=$(aws cloudwatch get-metric-data \
@@ -554,7 +556,7 @@ collect_aurora_metrics() {
         peak: (.MetricDataResults[0].Values | max // 0)
     }' > "${RESULT_DIR}/aurora-acu-timeseries.json" 2>/dev/null || true
 
-    log_info "Aurora ACU ピーク値: ${acu_value}"
+    log_info "Aurora ACU ピーク値: ${acu_value}" >&2
     echo "$acu_value"
 }
 
@@ -563,7 +565,7 @@ collect_aurora_metrics() {
 # ピーク OCU（Indexing + Search の合計ピーク）を stdout に出力し、
 # 時系列データを RESULT_DIR/opensearch-ocu-timeseries.json に保存する
 collect_opensearch_metrics() {
-    log_info "OpenSearch OCU メトリクスを取得中..."
+    log_info "OpenSearch OCU メトリクスを取得中..." >&2
 
     local metric_json
     metric_json=$(aws cloudwatch get-metric-data \
@@ -636,7 +638,7 @@ collect_opensearch_metrics() {
         }
     }' > "${RESULT_DIR}/opensearch-ocu-timeseries.json" 2>/dev/null || true
 
-    log_info "OpenSearch OCU ピーク値: indexing=${indexing_peak}, search=${search_peak}, total=${total_peak}"
+    log_info "OpenSearch OCU ピーク値: indexing=${indexing_peak}, search=${search_peak}, total=${total_peak}" >&2
     echo "$total_peak"
 }
 
@@ -757,7 +759,7 @@ calculate_s3vectors_cost() {
     total_bytes=$(echo "$record_count * $bytes_per_record" | bc)
     local total_gb
     total_gb=$(echo "scale=6; $total_bytes / 1073741824" | bc)
-    echo "scale=4; $total_gb * 0.219" | bc
+    echo "scale=4; $total_gb * 0.219" | bc | sed 's/^\./0./'
 }
 
 # =============================================================================
@@ -1113,11 +1115,7 @@ run_benchmark_cycle() {
 
     log_info "===== ${db_label} ベンチマークサイクル開始 ====="
 
-    # --- Step 1: 投入前レコード数取得 ---
-    pre_count=$(get_record_count "$target_db")
-    log_info "${db_label} 投入前レコード数: ${pre_count}"
-
-    # --- Step 2: インデックス削除（Aurora のみ） ---
+    # --- Step 1: インデックス削除（Aurora のみ：TRUNCATE を含む） ---
     case "$target_db" in
         aurora)
             if drop_aurora_index; then
@@ -1137,7 +1135,12 @@ run_benchmark_cycle() {
             ;;
     esac
 
+    # --- Step 2: 投入前レコード数取得（TRUNCATE 後に取得することで正確な値を表示） ---
+    pre_count=$(get_record_count "$target_db")
+    log_info "${db_label} 投入前レコード数: ${pre_count}"
+
     # --- Step 3: ECS タスク実行（データ投入） ---
+    # Note: Step 1=index_drop, Step 2=pre_count
     if ! run_ecs_task "$target_db" "$RECORD_COUNT"; then
         cycle_success="false"
         cycle_error="ECS データ投入タスクが失敗（target_db=${target_db}）"
@@ -1181,6 +1184,18 @@ run_benchmark_cycle() {
             ;;
         opensearch|s3vectors)
             index_create_success="true"
+            ;;
+    esac
+
+    # --- Step 5.5: OpenSearch インデックス反映待機 ---
+    # OpenSearch Serverless はニアリアルタイムインデックスのため、
+    # Bulk API 投入直後は全件が検索可能になっていない場合がある。
+    # 正確な投入後レコード数を取得するため、一定時間待機する。
+    case "$target_db" in
+        opensearch)
+            local wait_seconds=30
+            log_info "${db_label} インデックス反映待機中（${wait_seconds}秒）..."
+            sleep "$wait_seconds"
             ;;
     esac
 

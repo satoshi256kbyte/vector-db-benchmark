@@ -48,6 +48,7 @@ export class BulkIngestConstruct extends Construct {
       this,
       "TaskDefinition",
       {
+        family: "vdbbench-dev-ecs-bulk-ingest",
         memoryLimitMiB: 4096,
         cpu: 2048,
         runtimePlatform: {

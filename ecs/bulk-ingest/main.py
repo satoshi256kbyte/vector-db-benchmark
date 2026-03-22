@@ -111,13 +111,17 @@ def _get_opensearch_client() -> "OpenSearch":
                 verify_certs=True,
                 connection_class=RequestsHttpConnection,
             )
-            client.info()
+            # OpenSearch Serverless は root / (info API) をサポートしないため、
+            # サポート対象の cat.indices API で接続確認を行う
+            client.cat.indices(format="json")
             logger.info("opensearch_connection_established", attempt=attempt)
             return client
-        except Exception:
-            logger.warning("opensearch_connection_retry", attempt=attempt)
+        except Exception as e:
+            logger.warning("opensearch_connection_retry", attempt=attempt, error=str(e))
             if attempt == OPENSEARCH_MAX_RETRIES:
-                raise RuntimeError(f"OpenSearch connection failed after {OPENSEARCH_MAX_RETRIES} retries")
+                raise RuntimeError(
+                    f"OpenSearch connection failed after {OPENSEARCH_MAX_RETRIES} retries: {e}"
+                )
             time.sleep(OPENSEARCH_RETRY_DELAY_SECONDS)
 
     raise RuntimeError("OpenSearch connection failed")  # pragma: no cover
@@ -137,10 +141,12 @@ def _get_s3vectors_client() -> boto3.client:
             client = boto3.client("s3vectors")
             logger.info("s3vectors_client_created", attempt=attempt)
             return client
-        except Exception:
-            logger.warning("s3vectors_client_retry", attempt=attempt)
+        except Exception as e:
+            logger.warning("s3vectors_client_retry", attempt=attempt, error=str(e))
             if attempt == MAX_CONNECTION_RETRIES:
-                raise RuntimeError(f"S3 Vectors client creation failed after {MAX_CONNECTION_RETRIES} retries")
+                raise RuntimeError(
+                    f"S3 Vectors client creation failed after {MAX_CONNECTION_RETRIES} retries: {e}"
+                )
             time.sleep(CONNECTION_RETRY_DELAY_SECONDS)
 
     raise RuntimeError("S3 Vectors client creation failed")  # pragma: no cover
@@ -284,6 +290,19 @@ def _run_data_ingestion_only(
 
         total_duration = calculate_total_duration(phases)
         throughput = calculate_throughput(record_count, total_duration) if total_duration > 0 else 0.0
+
+        # レコードが1件も投入されなかった場合は失敗とみなす
+        if inserted == 0 and record_count > 0:
+            log.error("data_ingestion_zero_records", record_count=record_count)
+            return DatabaseIngestionResult(
+                database=db_name,
+                phases=phases,
+                total_duration_seconds=total_duration,
+                throughput_records_per_sec=0.0,
+                record_count=record_count,
+                success=False,
+                error_message=f"0 records inserted out of {record_count} requested",
+            )
 
         log.info(
             "data_ingestion_only_complete",
@@ -461,6 +480,8 @@ def _run_single_database(target_db: str, record_count: int) -> None:
     elif target_db == "opensearch":
         try:
             os_client = _get_opensearch_client()
+            os_im = OpenSearchIndexManager(os_client)
+            os_im.ensure_index()
             ingester = OpenSearchIngester(os_client)
             result = _run_data_ingestion_only("opensearch", ingester, record_count)
         except Exception as exc:
@@ -511,6 +532,8 @@ def _run_all_databases(record_count: int) -> None:
     opensearch_result: DatabaseIngestionResult
     try:
         os_client = _get_opensearch_client()
+        os_im = OpenSearchIndexManager(os_client)
+        os_im.ensure_index()
         os_ing = OpenSearchIngester(os_client)
         opensearch_result = _run_data_ingestion_only("opensearch", os_ing, record_count)
     except Exception as exc:

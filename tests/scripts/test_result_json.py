@@ -130,15 +130,22 @@ save_result_json \
     {ecs_exit_code} \
     {acu_during} \
     {bool_str(success)} \
-    "{error_message}"
+    "{error_message}" \
+    0 \
+    0 \
+    0 \
+    0
 """
 
 
-def _read_save_result_json_function() -> str:
-    """benchmark.sh から save_result_json 関数を抽出する.
+def _extract_bash_function(function_name: str) -> str:
+    """benchmark.sh から指定された関数を抽出する.
+
+    Args:
+        function_name: 抽出する関数名。
 
     Returns:
-        save_result_json 関数の bash コード。
+        関数の bash コード。
     """
     lines: list[str] = []
     in_function = False
@@ -146,7 +153,7 @@ def _read_save_result_json_function() -> str:
 
     with open(BENCHMARK_SCRIPT, encoding="utf-8") as f:
         for line in f:
-            if line.strip().startswith("save_result_json()"):
+            if line.strip().startswith(f"{function_name}()"):
                 in_function = True
 
             if in_function:
@@ -156,30 +163,28 @@ def _read_save_result_json_function() -> str:
                     break
 
     return "".join(lines)
+
+
+def _read_save_result_json_function() -> str:
+    """benchmark.sh から save_result_json 関数と依存関数を抽出する.
+
+    Returns:
+        save_result_json 関数および依存する sanitize_number 関数の bash コード。
+    """
+    sanitize_fn = _extract_bash_function("sanitize_number")
+    save_fn = _extract_bash_function("save_result_json")
+    return f"{sanitize_fn}\n{save_fn}"
 
 
 def _read_generate_summary_function() -> str:
-    """benchmark.sh から generate_summary 関数を抽出する.
+    """benchmark.sh から generate_summary 関数と依存関数を抽出する.
 
     Returns:
-        generate_summary 関数の bash コード。
+        generate_summary 関数および依存する sanitize_number 関数の bash コード。
     """
-    lines: list[str] = []
-    in_function = False
-    brace_depth = 0
-
-    with open(BENCHMARK_SCRIPT, encoding="utf-8") as f:
-        for line in f:
-            if line.strip().startswith("generate_summary()"):
-                in_function = True
-
-            if in_function:
-                lines.append(line)
-                brace_depth += line.count("{") - line.count("}")
-                if brace_depth == 0 and len(lines) > 1:
-                    break
-
-    return "".join(lines)
+    sanitize_fn = _extract_bash_function("sanitize_number")
+    summary_fn = _extract_bash_function("generate_summary")
+    return f"{sanitize_fn}\n{summary_fn}"
 
 
 def _run_bash_script(script: str) -> subprocess.CompletedProcess[str]:

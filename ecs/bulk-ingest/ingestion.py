@@ -85,12 +85,12 @@ class AuroraIngester:
         self._connection.commit()
         return end_index - start_index
 
-    def ingest_all(self, record_count: int, batch_size: int = 1000) -> int:
+    def ingest_all(self, record_count: int, batch_size: int = 500) -> int:
         """全レコードをバッチ単位で Aurora に投入する.
 
         Args:
             record_count: 投入するレコード総数
-            batch_size: 1バッチあたりのレコード数
+            batch_size: 1バッチあたりのレコード数（デフォルト500件）
 
         Returns:
             投入したレコード総数
@@ -105,10 +105,10 @@ class AuroraIngester:
                     count = self.ingest_batch(start, end)
                     total_inserted += count
                     break
-                except Exception:
-                    log.warning("batch_insert_retry", start=start, end=end, attempt=attempt)
+                except Exception as e:
+                    log.warning("batch_insert_retry", start=start, end=end, attempt=attempt, error=str(e))
                     if attempt == MAX_RETRIES:
-                        log.error("batch_insert_failed", start=start, end=end)
+                        log.error("batch_insert_failed", start=start, end=end, error=str(e))
                         break
                     time.sleep(RETRY_DELAY_SECONDS)
 
@@ -139,13 +139,20 @@ class OpenSearchIngester:
         """
         bulk_body: list[dict[str, object]] = []
         for i in range(start_index, end_index):
-            bulk_body.append({"index": {"_index": "embeddings", "_id": str(i)}})
+            # OpenSearch Serverless VECTOR コレクションでは _id 指定不可
+            bulk_body.append({"index": {"_index": "embeddings"}})
             bulk_body.append({"id": i, "content": f"doc-{i}", "embedding": generate_vector(seed=i)})
 
         response = self._client.bulk(body=bulk_body)
         if response.get("errors"):
             error_items = [item for item in response["items"] if "error" in item.get("index", {})]
-            raise RuntimeError(f"OpenSearch bulk API returned errors: {len(error_items)} items failed")
+            # 最初のエラー詳細をログに含める
+            first_error = ""
+            if error_items:
+                first_error = str(error_items[0].get("index", {}).get("error", ""))
+            raise RuntimeError(
+                f"OpenSearch bulk API returned errors: {len(error_items)} items failed, first_error={first_error}"
+            )
         return end_index - start_index
 
     def ingest_all(self, record_count: int, batch_size: int = 1000) -> int:
@@ -168,10 +175,10 @@ class OpenSearchIngester:
                     count = self.ingest_batch(start, end)
                     total_inserted += count
                     break
-                except Exception:
-                    log.warning("batch_insert_retry", start=start, end=end, attempt=attempt)
+                except Exception as e:
+                    log.warning("batch_insert_retry", start=start, end=end, attempt=attempt, error=str(e))
                     if attempt == MAX_RETRIES:
-                        log.error("batch_insert_failed", start=start, end=end)
+                        log.error("batch_insert_failed", start=start, end=end, error=str(e))
                         break
                     time.sleep(RETRY_DELAY_SECONDS)
 
@@ -219,16 +226,22 @@ class S3VectorsIngester:
         )
         return end_index - start_index
 
-    def ingest_all(self, record_count: int, batch_size: int = 1000) -> int:
+    def ingest_all(self, record_count: int, batch_size: int = 50) -> int:
         """全レコードをバッチ単位で S3 Vectors に投入する.
+
+        S3 Vectors の PutVectors API は1回あたり最大500件かつリクエストペイロード
+        最大 20MiB の制限がある。1536次元ベクトルの場合、JSON シリアライズ後の
+        サイズが大きいため、デフォルトバッチサイズは50件に設定。
 
         Args:
             record_count: 投入するレコード総数
-            batch_size: 1バッチあたりのレコード数
+            batch_size: 1バッチあたりのレコード数（最大500、ただしペイロードサイズ制限に注意）
 
         Returns:
             投入したレコード総数
         """
+        if batch_size > 500:
+            batch_size = 500
         log = logger.bind(database="s3vectors")
         total_inserted = 0
 
@@ -239,10 +252,10 @@ class S3VectorsIngester:
                     count = self.ingest_batch(start, end)
                     total_inserted += count
                     break
-                except Exception:
-                    log.warning("batch_insert_retry", start=start, end=end, attempt=attempt)
+                except Exception as e:
+                    log.warning("batch_insert_retry", start=start, end=end, attempt=attempt, error=str(e))
                     if attempt == MAX_RETRIES:
-                        log.error("batch_insert_failed", start=start, end=end)
+                        log.error("batch_insert_failed", start=start, end=end, error=str(e))
                         break
                     time.sleep(RETRY_DELAY_SECONDS)
 

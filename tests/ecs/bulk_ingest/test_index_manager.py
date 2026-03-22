@@ -37,9 +37,10 @@ class TestAuroraIndexManagerDropIndex:
         manager.drop_index()
 
         calls = mock_cursor.execute.call_args_list
-        assert len(calls) == 2
+        assert len(calls) == 3
         assert f"DROP INDEX IF EXISTS {HNSW_INDEX_NAME};" in calls[0][0][0]
-        assert f"TRUNCATE TABLE {INDEX_NAME};" in calls[1][0][0]
+        assert "SELECT EXISTS" in calls[1][0][0]
+        assert f"TRUNCATE TABLE {INDEX_NAME};" in calls[2][0][0]
 
     def test_drop_index_commits_transaction(self) -> None:
         """drop_index 後に commit が呼ばれること."""
@@ -100,10 +101,11 @@ class TestAuroraIndexManagerCreateIndex:
         manager.create_index()
 
         calls = mock_cursor.execute.call_args_list
-        assert len(calls) == 3
+        assert len(calls) == 4
         assert "DROP INDEX" in calls[0][0][0]
-        assert "TRUNCATE" in calls[1][0][0]
-        assert "CREATE INDEX" in calls[2][0][0]
+        assert "SELECT EXISTS" in calls[1][0][0]
+        assert "TRUNCATE" in calls[2][0][0]
+        assert "CREATE INDEX" in calls[3][0][0]
 
 
 # ---------------------------------------------------------------------------
