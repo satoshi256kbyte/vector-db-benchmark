@@ -16,8 +16,12 @@ OPENSEARCH_COLLECTION="vdbbench-dev-oss-vector"
 S3VECTORS_BUCKET="vdbbench-dev-s3vectors-benchmark"
 ECS_CLUSTER="vdbbench-dev-ecs-benchmark"
 REGION="ap-northeast-1"
-AURORA_MIN_ACU=8
+AURORA_MAX_ACU=16
 OPENSEARCH_MAX_OCU=10
+AURORA_ORIGINAL_MIN_ACU=""
+AURORA_ORIGINAL_MAX_ACU=""
+OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU=""
+OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU=""
 
 # =============================================================================
 # 状態フラグ（クリーンアップ用）
@@ -72,7 +76,7 @@ Options:
   --s3vectors-bucket NAME       S3 Vectors バケット名 (デフォルト: vdbbench-dev-s3vectors-benchmark)
   --ecs-cluster NAME            ECS クラスター名 (デフォルト: vdbbench-dev-ecs-benchmark)
   --region REGION               AWS リージョン (デフォルト: ap-northeast-1)
-  --aurora-min-acu N            ACU 拡張時の最小値 (デフォルト: 8)
+  --aurora-max-acu N            ACU 拡張時の MaxCapacity (デフォルト: 16)
   --opensearch-max-ocu N        OCU 拡張時の上限値 (デフォルト: 10)
   --aurora-secret-arn ARN       Aurora Secrets Manager シークレット ARN
   --task-definition ARN         ECS タスク定義 ARN
@@ -112,8 +116,8 @@ parse_args() {
                 REGION="$2"
                 shift 2
                 ;;
-            --aurora-min-acu)
-                AURORA_MIN_ACU="$2"
+            --aurora-max-acu)
+                AURORA_MAX_ACU="$2"
                 shift 2
                 ;;
             --opensearch-max-ocu)
@@ -192,11 +196,11 @@ check_prerequisites() {
 # Aurora ACU スケーリング
 # =============================================================================
 
-# Aurora Serverless v2 の最小 ACU を拡張する
+# Aurora Serverless v2 の MaxCapacity を拡張する（MinCapacity は変更しない）
 scale_aurora_up() {
-    log_info "Aurora ACU スケーリング: 最小 ACU を ${AURORA_MIN_ACU} に拡張します..."
+    log_info "Aurora ACU スケーリング: MaxCapacity を ${AURORA_MAX_ACU} に拡張します..."
 
-    # 変更前の設定値をログ記録
+    # 変更前の設定値を取得・保存
     local current_config
     current_config=$(aws rds describe-db-clusters \
         --db-cluster-identifier "$AURORA_CLUSTER" \
@@ -205,11 +209,14 @@ scale_aurora_up() {
         --region "$REGION")
     log_info "Aurora ACU 変更前: ${current_config}"
 
-    # 最小 ACU を拡張
+    AURORA_ORIGINAL_MIN_ACU=$(echo "$current_config" | jq -r '.MinCapacity')
+    AURORA_ORIGINAL_MAX_ACU=$(echo "$current_config" | jq -r '.MaxCapacity')
+
+    # MaxCapacity のみ拡張（MinCapacity は現状維持）
     if ! aws rds modify-db-cluster \
         --db-cluster-identifier "$AURORA_CLUSTER" \
         --serverless-v2-scaling-configuration \
-        "MinCapacity=${AURORA_MIN_ACU},MaxCapacity=16" \
+        "MinCapacity=${AURORA_ORIGINAL_MIN_ACU},MaxCapacity=${AURORA_MAX_ACU}" \
         --apply-immediately \
         --region "$REGION" > /dev/null; then
         log_error "Aurora ACU の拡張に失敗しました"
@@ -217,21 +224,23 @@ scale_aurora_up() {
     fi
 
     AURORA_SCALED_UP="true"
-    log_info "Aurora ACU 拡張コマンドを実行しました（MinCapacity=${AURORA_MIN_ACU}, MaxCapacity=16）"
+    log_info "Aurora ACU 拡張コマンドを実行しました（MinCapacity=${AURORA_ORIGINAL_MIN_ACU}, MaxCapacity=${AURORA_MAX_ACU}）"
 
     # クラスターが available になるまで待機
     wait_aurora_available
 }
 
-# Aurora Serverless v2 の最小 ACU を元の値（0）に復元する
+# Aurora Serverless v2 の MaxCapacity を元の値に復元する
 scale_aurora_down() {
-    log_info "Aurora ACU スケーリング: 最小 ACU を 0 に復元します..."
+    local restore_min="${AURORA_ORIGINAL_MIN_ACU:-0}"
+    local restore_max="${AURORA_ORIGINAL_MAX_ACU:-16}"
+    log_info "Aurora ACU スケーリング: MaxCapacity を ${restore_max} に復元します..."
 
-    # 最小 ACU を 0 に復元
+    # MaxCapacity を元の値に復元
     if ! aws rds modify-db-cluster \
         --db-cluster-identifier "$AURORA_CLUSTER" \
         --serverless-v2-scaling-configuration \
-        "MinCapacity=0,MaxCapacity=16" \
+        "MinCapacity=${restore_min},MaxCapacity=${restore_max}" \
         --apply-immediately \
         --region "$REGION" > /dev/null; then
         log_error "Aurora ACU の復元に失敗しました"
@@ -239,7 +248,7 @@ scale_aurora_down() {
     fi
 
     AURORA_SCALED_UP="false"
-    log_info "Aurora ACU 復元コマンドを実行しました（MinCapacity=0, MaxCapacity=16）"
+    log_info "Aurora ACU 復元コマンドを実行しました（MinCapacity=${restore_min}, MaxCapacity=${restore_max}）"
 
     # クラスターが available になるまで待機
     wait_aurora_available
@@ -293,12 +302,15 @@ wait_aurora_available() {
 scale_opensearch_up() {
     log_info "OpenSearch OCU スケーリング: OCU 上限を ${OPENSEARCH_MAX_OCU} に拡張します..."
 
-    # 変更前の設定値をログ記録
+    # 変更前の設定値を取得・保存
     local current_settings
     current_settings=$(aws opensearchserverless get-account-settings \
         --output json \
         --region "$REGION")
     log_info "OpenSearch OCU 変更前: ${current_settings}"
+
+    OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU=$(echo "$current_settings" | jq -r '.accountSettingsDetail.capacityLimits.maxIndexingCapacityInOCU')
+    OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU=$(echo "$current_settings" | jq -r '.accountSettingsDetail.capacityLimits.maxSearchCapacityInOCU')
 
     # OCU 上限を拡張
     if ! aws opensearchserverless update-account-settings \
@@ -319,9 +331,11 @@ scale_opensearch_up() {
     log_info "OpenSearch OCU 変更後: ${updated_settings}"
 }
 
-# OpenSearch Serverless の OCU 上限を元の値（2）に復元する
+# OpenSearch Serverless の OCU 上限を元の値に復元する
 scale_opensearch_down() {
-    log_info "OpenSearch OCU スケーリング: OCU 上限を 2 に復元します..."
+    local restore_indexing="${OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU:-2}"
+    local restore_search="${OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU:-2}"
+    log_info "OpenSearch OCU スケーリング: OCU 上限を元の値に復元します（indexing=${restore_indexing}, search=${restore_search}）..."
 
     # 変更前の設定値をログ記録
     local current_settings
@@ -330,16 +344,16 @@ scale_opensearch_down() {
         --region "$REGION")
     log_info "OpenSearch OCU 復元前: ${current_settings}"
 
-    # OCU 上限を 2 に復元
+    # OCU 上限を元の値に復元
     if ! aws opensearchserverless update-account-settings \
-        --capacity-limits "maxIndexingCapacityInOCU=2,maxSearchCapacityInOCU=2" \
+        --capacity-limits "maxIndexingCapacityInOCU=${restore_indexing},maxSearchCapacityInOCU=${restore_search}" \
         --region "$REGION" > /dev/null; then
         log_error "OpenSearch OCU の復元に失敗しました"
         return 1
     fi
 
     OPENSEARCH_SCALED_UP="false"
-    log_info "OpenSearch OCU 復元コマンドを実行しました（maxIndexingCapacityInOCU=2, maxSearchCapacityInOCU=2）"
+    log_info "OpenSearch OCU 復元コマンドを実行しました（maxIndexingCapacityInOCU=${restore_indexing}, maxSearchCapacityInOCU=${restore_search}）"
 
     # 変更後の設定値をログ記録
     local updated_settings
@@ -358,10 +372,12 @@ cleanup() {
     # Aurora ACU を元に戻す
     if [[ "$AURORA_SCALED_UP" == "true" ]]; then
         log_info "Aurora ACU を元の値に戻しています..."
+        local restore_min="${AURORA_ORIGINAL_MIN_ACU:-0}"
+        local restore_max="${AURORA_ORIGINAL_MAX_ACU:-16}"
         aws rds modify-db-cluster \
             --db-cluster-identifier "$AURORA_CLUSTER" \
             --serverless-v2-scaling-configuration \
-            "MinCapacity=0,MaxCapacity=16" \
+            "MinCapacity=${restore_min},MaxCapacity=${restore_max}" \
             --apply-immediately \
             --region "$REGION" 2>/dev/null || true
     fi
@@ -369,8 +385,10 @@ cleanup() {
     # OpenSearch OCU を元に戻す
     if [[ "$OPENSEARCH_SCALED_UP" == "true" ]]; then
         log_info "OpenSearch OCU を元の値に戻しています..."
+        local restore_indexing="${OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU:-2}"
+        local restore_search="${OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU:-2}"
         aws opensearchserverless update-account-settings \
-            --capacity-limits "maxIndexingCapacityInOCU=2,maxSearchCapacityInOCU=2" \
+            --capacity-limits "maxIndexingCapacityInOCU=${restore_indexing},maxSearchCapacityInOCU=${restore_search}" \
             --region "$REGION" 2>/dev/null || true
     fi
 
