@@ -43,6 +43,26 @@ log_separator() {
     echo "========================================"
 }
 
+# bc 出力を jq --argjson 互換の JSON 数値に正規化する
+# 空文字列 → "0", ".1234" → "0.1234", "-.1234" → "-0.1234"
+sanitize_number() {
+    local val="${1:-0}"
+    # 空文字列またはnullの場合は0
+    if [[ -z "$val" || "$val" == "null" ]]; then
+        echo "0"
+        return
+    fi
+    # 先頭がドットの場合（例: .0012）→ 0.0012
+    if [[ "$val" =~ ^\. ]]; then
+        val="0${val}"
+    fi
+    # 先頭が-.の場合（例: -.0012）→ -0.0012
+    if [[ "$val" =~ ^-\. ]]; then
+        val="-0${val:1}"
+    fi
+    echo "$val"
+}
+
 # =============================================================================
 # ヘルプ表示
 # =============================================================================
@@ -632,7 +652,7 @@ calculate_fargate_cost() {
     vcpu_cost=$(echo "scale=6; $hours * $vcpu * 0.05056" | bc)
     local memory_cost
     memory_cost=$(echo "scale=6; $hours * $memory_gb * 0.00553" | bc)
-    echo "scale=4; $vcpu_cost + $memory_cost" | bc
+    echo "scale=4; $vcpu_cost + $memory_cost" | bc | sed 's/^\./0./'
 }
 
 # Aurora Serverless v2 ACU 概算コストを時系列データから算出する（ap-northeast-1 料金）
@@ -670,7 +690,7 @@ calculate_aurora_acu_cost() {
     fi
 
     # ACU·秒 → ACU·時間 → コスト（USD）
-    echo "scale=4; ($acu_seconds / 3600) * 0.12" | bc
+    echo "scale=4; ($acu_seconds / 3600) * 0.12" | bc | sed 's/^\./0./'
 }
 
 # OpenSearch Serverless OCU 概算コストを時系列データから算出する（ap-northeast-1 料金）
@@ -723,7 +743,7 @@ calculate_opensearch_ocu_cost() {
     fi
 
     # 合計 OCU·秒 → OCU·時間 → コスト（USD）
-    echo "scale=4; (($indexing_ocu_seconds + $search_ocu_seconds) / 3600) * 0.24" | bc
+    echo "scale=4; (($indexing_ocu_seconds + $search_ocu_seconds) / 3600) * 0.24" | bc | sed 's/^\./0./'
 }
 
 # S3 Vectors 概算コストを算出する（ap-northeast-1 料金）
@@ -782,17 +802,17 @@ create_result_dir() {
 #   $18 - service_cost_usd: サービス概算コスト（Aurora ACU / OpenSearch OCU）
 save_result_json() {
     local database="$1"
-    local record_count="$2"
-    local pre_count="$3"
-    local post_count="$4"
+    local record_count="${2:-0}"
+    local pre_count="${3:-0}"
+    local post_count="${4:-0}"
     local start_time="$5"
     local end_time="$6"
-    local duration_seconds="$7"
+    local duration_seconds="${7:-0}"
     local index_drop_success="$8"
     local index_create_success="$9"
     local ecs_task_arn="${10}"
-    local ecs_exit_code="${11}"
-    local acu_during="${12}"
+    local ecs_exit_code="${11:-0}"
+    local acu_during="${12:-0}"
     local success="${13}"
     local error_message="${14}"
     local fargate_cost_usd="${15:-0}"
@@ -800,10 +820,22 @@ save_result_json() {
     local index_create_duration_seconds="${17:-0}"
     local service_cost_usd="${18:-0}"
 
+    # 数値を jq --argjson 互換に正規化
+    record_count=$(sanitize_number "$record_count")
+    pre_count=$(sanitize_number "$pre_count")
+    post_count=$(sanitize_number "$post_count")
+    duration_seconds=$(sanitize_number "$duration_seconds")
+    ecs_exit_code=$(sanitize_number "$ecs_exit_code")
+    acu_during=$(sanitize_number "$acu_during")
+    fargate_cost_usd=$(sanitize_number "$fargate_cost_usd")
+    opensearch_ocu_peak=$(sanitize_number "$opensearch_ocu_peak")
+    index_create_duration_seconds=$(sanitize_number "$index_create_duration_seconds")
+    service_cost_usd=$(sanitize_number "$service_cost_usd")
+
     # スループット算出（duration_seconds が 0 の場合は 0）
     local throughput="0"
     if [[ "$duration_seconds" -gt 0 ]]; then
-        throughput=$(echo "scale=2; $record_count / $duration_seconds" | bc)
+        throughput=$(sanitize_number "$(echo "scale=2; $record_count / $duration_seconds" | bc)")
     fi
 
     # DB 識別名からファイル名を決定（aurora_pgvector → aurora, opensearch → opensearch, s3vectors → s3vectors）
@@ -886,6 +918,16 @@ generate_summary() {
     local aurora_service_cost_usd="${6:-0}"
     local opensearch_service_cost_usd="${7:-0}"
     local s3vectors_service_cost_usd="${8:-0}"
+
+    # 数値を jq --argjson 互換に正規化
+    total_duration_seconds=$(sanitize_number "$total_duration_seconds")
+    fargate_total_seconds=$(sanitize_number "$fargate_total_seconds")
+    fargate_estimated_cost_usd=$(sanitize_number "$fargate_estimated_cost_usd")
+    aurora_acu_peak=$(sanitize_number "$aurora_acu_peak")
+    opensearch_ocu_peak=$(sanitize_number "$opensearch_ocu_peak")
+    aurora_service_cost_usd=$(sanitize_number "$aurora_service_cost_usd")
+    opensearch_service_cost_usd=$(sanitize_number "$opensearch_service_cost_usd")
+    s3vectors_service_cost_usd=$(sanitize_number "$s3vectors_service_cost_usd")
 
     local completed_at
     completed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -1091,7 +1133,6 @@ run_benchmark_cycle() {
             fi
             ;;
         opensearch|s3vectors)
-            log_info "${db_label}: インデックス削除はスキップ"
             index_drop_success="true"
             ;;
     esac
@@ -1139,7 +1180,6 @@ run_benchmark_cycle() {
             fi
             ;;
         opensearch|s3vectors)
-            log_info "${db_label}: インデックス作成はスキップ"
             index_create_success="true"
             ;;
     esac
