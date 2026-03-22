@@ -21,7 +21,6 @@ export class OpenSearchConstruct extends Construct {
     const collectionName = "vdbbench-dev-oss-vector";
 
     // OCU制限: AwsCustomResource で UpdateAccountSettings API を呼び出し
-    // インデックス用・検索用それぞれ Max 2（コスト最小化）
     new cr.AwsCustomResource(this, "AccountSettings", {
       onCreate: {
         service: "OpenSearchServerless",
@@ -29,7 +28,7 @@ export class OpenSearchConstruct extends Construct {
         parameters: {
           capacityLimits: {
             maxIndexingCapacityInOCU: 2,
-            maxSearchCapacityInOCU: 2,
+            maxSearchCapacityInOCU: 5,
           },
         },
         physicalResourceId: cr.PhysicalResourceId.of("aoss-account-settings"),

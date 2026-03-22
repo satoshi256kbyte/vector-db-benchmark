@@ -246,7 +246,7 @@ def _create_failure_result(db_name: str, record_count: int, error: str) -> Datab
 
 
 VALID_TARGET_DBS = {"all", "aurora", "opensearch", "s3vectors"}
-VALID_TASK_MODES = {"ingest", "index_drop", "index_create"}
+VALID_TASK_MODES = {"ingest", "index_drop", "index_create", "count"}
 
 
 def _run_data_ingestion_only(
@@ -354,6 +354,62 @@ def _run_index_operation(target_db: str, operation: str) -> None:
     except Exception as exc:
         log.error("index_operation_failed", error=str(exc))
         sys.exit(1)
+
+
+def _run_count_operation(target_db: str) -> None:
+    """指定 DB のレコード数を取得し、構造化ログで出力する.
+
+    TASK_MODE が count の場合に呼び出される。
+    シェルスクリプトから ECS タスク経由でレコード数を取得するために使用する。
+    結果は RECORD_COUNT_RESULT: {"database": ..., "count": ...} 形式で stdout に出力する。
+
+    Args:
+        target_db: 対象 DB 識別子（"aurora", "opensearch", "s3vectors"）
+    """
+    log = logger.bind(target_db=target_db)
+    log.info("count_operation_start")
+
+    count = 0
+
+    if target_db == "aurora":
+        try:
+            conn = _get_aurora_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM embeddings;")
+                result = cur.fetchone()
+                count = result[0] if result else 0
+            conn.close()
+        except Exception as exc:
+            log.error("aurora_count_failed", error=str(exc))
+            sys.exit(1)
+    elif target_db == "opensearch":
+        try:
+            os_client = _get_opensearch_client()
+            resp = os_client.count(index="embeddings")
+            count = resp.get("count", 0)
+        except Exception as exc:
+            log.error("opensearch_count_failed", error=str(exc))
+            sys.exit(1)
+    elif target_db == "s3vectors":
+        try:
+            s3v_client = _get_s3vectors_client()
+            bucket_name = os.environ.get("S3VECTORS_BUCKET_NAME", "")
+            index_name = os.environ.get("S3VECTORS_INDEX_NAME", "")
+            resp = s3v_client.list_vectors(
+                vectorBucketName=bucket_name,
+                indexName=index_name,
+            )
+            count = len(resp.get("vectors", []))
+        except Exception as exc:
+            log.error("s3vectors_count_failed", error=str(exc))
+            sys.exit(1)
+    else:
+        log.error("invalid_target_db_for_count", target_db=target_db)
+        sys.exit(1)
+
+    # シェルスクリプトがパースできる形式で出力
+    print(f"RECORD_COUNT_RESULT:{count}")
+    log.info("count_operation_complete", database=target_db, count=count)
 
 
 def _run_single_database(target_db: str, record_count: int) -> None:
@@ -495,6 +551,10 @@ def main() -> None:
 
     if task_mode == "index_create":
         _run_index_operation(target_db, "create")
+        return
+
+    if task_mode == "count":
+        _run_count_operation(target_db)
         return
 
     # task_mode == "ingest"

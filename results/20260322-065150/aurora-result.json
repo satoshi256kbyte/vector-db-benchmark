@@ -1,0 +1,19 @@
+{
+  "database": "aurora_pgvector",
+  "record_count": 100000,
+  "pre_count": 0,
+  "post_count": 0,
+  "start_time": "",
+  "end_time": "",
+  "duration_seconds": 0,
+  "throughput_records_per_sec": 0,
+  "index_drop_success": false,
+  "index_create_success": false,
+  "ecs_task_arn": "",
+  "ecs_exit_code": 0,
+  "acu_before": 0,
+  "acu_during": 0,
+  "acu_after": 0,
+  "success": false,
+  "error_message": "Aurora ACU スケーリング拡張に失敗"
+}

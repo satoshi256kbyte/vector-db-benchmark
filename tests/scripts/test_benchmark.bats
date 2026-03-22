@@ -38,7 +38,7 @@ setup() {
     [ "$S3VECTORS_BUCKET" = "vdbbench-dev-s3vectors-benchmark" ]
     [ "$ECS_CLUSTER" = "vdbbench-dev-ecs-benchmark" ]
     [ "$REGION" = "ap-northeast-1" ]
-    [ "$AURORA_MIN_ACU" = "8" ]
+    [ "$AURORA_MAX_ACU" = "16" ]
     [ "$OPENSEARCH_MAX_OCU" = "10" ]
 }
 
@@ -88,11 +88,11 @@ setup() {
     [ "$REGION" = "us-west-2" ]
 }
 
-@test "--aurora-min-acu で AURORA_MIN_ACU がオーバーライドされる" {
+@test "--aurora-max-acu で AURORA_MAX_ACU がオーバーライドされる" {
     # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
-    parse_args --aurora-min-acu 16
+    parse_args --aurora-max-acu 32
 
-    [ "$AURORA_MIN_ACU" = "16" ]
+    [ "$AURORA_MAX_ACU" = "32" ]
 }
 
 @test "--opensearch-max-ocu で OPENSEARCH_MAX_OCU がオーバーライドされる" {
@@ -112,12 +112,12 @@ setup() {
         --record-count 200000 \
         --aurora-cluster custom-aurora \
         --region eu-west-1 \
-        --aurora-min-acu 4
+        --aurora-max-acu 32
 
     [ "$RECORD_COUNT" = "200000" ]
     [ "$AURORA_CLUSTER" = "custom-aurora" ]
     [ "$REGION" = "eu-west-1" ]
-    [ "$AURORA_MIN_ACU" = "4" ]
+    [ "$AURORA_MAX_ACU" = "32" ]
 }
 
 @test "一部の引数のみ指定した場合、未指定の引数はデフォルト値を保持する" {
@@ -133,7 +133,7 @@ setup() {
     [ "$OPENSEARCH_COLLECTION" = "vdbbench-dev-oss-vector" ]
     [ "$S3VECTORS_BUCKET" = "vdbbench-dev-s3vectors-benchmark" ]
     [ "$ECS_CLUSTER" = "vdbbench-dev-ecs-benchmark" ]
-    [ "$AURORA_MIN_ACU" = "8" ]
+    [ "$AURORA_MAX_ACU" = "16" ]
     [ "$OPENSEARCH_MAX_OCU" = "10" ]
 }
 
@@ -146,7 +146,7 @@ setup() {
         --s3vectors-bucket s-bucket \
         --ecs-cluster e-cluster \
         --region ap-southeast-1 \
-        --aurora-min-acu 2 \
+        --aurora-max-acu 32 \
         --opensearch-max-ocu 5
 
     [ "$RECORD_COUNT" = "999" ]
@@ -155,7 +155,7 @@ setup() {
     [ "$S3VECTORS_BUCKET" = "s-bucket" ]
     [ "$ECS_CLUSTER" = "e-cluster" ]
     [ "$REGION" = "ap-southeast-1" ]
-    [ "$AURORA_MIN_ACU" = "2" ]
+    [ "$AURORA_MAX_ACU" = "32" ]
     [ "$OPENSEARCH_MAX_OCU" = "5" ]
 }
 

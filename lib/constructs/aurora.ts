@@ -22,7 +22,7 @@ export class AuroraConstruct extends Construct {
         version: rds.AuroraPostgresEngineVersion.VER_16_4,
       }),
       serverlessV2MinCapacity: 0,
-      serverlessV2MaxCapacity: 16,
+      serverlessV2MaxCapacity: 5,
       writer: rds.ClusterInstance.serverlessV2("writer"),
       vpc: props.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },

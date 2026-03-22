@@ -88,7 +88,11 @@ export class BulkIngestConstruct extends Construct {
 
     this.taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
-        actions: ["s3vectors:PutVectors", "s3vectors:DeleteVectors"],
+        actions: [
+          "s3vectors:PutVectors",
+          "s3vectors:DeleteVectors",
+          "s3vectors:ListVectors",
+        ],
         resources: ["*"],
       }),
     );

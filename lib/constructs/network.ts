@@ -158,9 +158,30 @@ export class NetworkConstruct extends Construct {
     });
 
     // VPC Endpoint: S3 Gateway (for ECR image layers)
-    this.vpc.addGatewayEndpoint("S3GatewayEndpoint", {
-      service: ec2.GatewayVpcEndpointAwsService.S3,
-      subnets: [{ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }],
-    });
+    const s3GatewayEndpoint = this.vpc.addGatewayEndpoint(
+      "S3GatewayEndpoint",
+      {
+        service: ec2.GatewayVpcEndpointAwsService.S3,
+        subnets: [{ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }],
+      },
+    );
+
+    // SG Rules: ECS -> S3 (HTTPS) for ECR image layer pulls via S3 Gateway Endpoint
+    // S3 Gateway Endpoint はルートテーブルベースのため SG ルールは不要だが、
+    // ISOLATED サブネットでは S3 への HTTPS 通信を許可する必要がある。
+    // Gateway Endpoint 経由のため、宛先は VPC CIDR 内の S3 エンドポイントとなるが、
+    // SG では prefix list を使用して S3 の IP レンジを指定する。
+    this.ecsSg.addEgressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      "Allow ECS to S3 via Gateway Endpoint for ECR image pulls",
+    );
+
+    // SG Rules: Lambda -> S3 (HTTPS) via S3 Gateway Endpoint
+    this.lambdaSg.addEgressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      "Allow Lambda to S3 via Gateway Endpoint",
+    );
   }
 }

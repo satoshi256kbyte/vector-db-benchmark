@@ -16,8 +16,8 @@ OPENSEARCH_COLLECTION="vdbbench-dev-oss-vector"
 S3VECTORS_BUCKET="vdbbench-dev-s3vectors-benchmark"
 ECS_CLUSTER="vdbbench-dev-ecs-benchmark"
 REGION="ap-northeast-1"
-AURORA_MAX_ACU=16
-OPENSEARCH_MAX_OCU=10
+AURORA_MAX_ACU=5
+OPENSEARCH_MAX_OCU=4
 AURORA_ORIGINAL_MIN_ACU=""
 AURORA_ORIGINAL_MAX_ACU=""
 OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU=""
@@ -37,12 +37,8 @@ AURORA_SECRET_ARN=""
 SUBNET_IDS=""
 SECURITY_GROUP_ID=""
 
-# Aurora 認証情報（get_aurora_credentials で設定）
-AURORA_HOST=""
-AURORA_PORT=""
-AURORA_USER=""
-AURORA_PASSWORD=""
-AURORA_DBNAME=""
+# CloudWatch Logs ロググループ名
+ECS_LOG_GROUP=""
 
 # =============================================================================
 # ログユーティリティ
@@ -76,8 +72,9 @@ Options:
   --s3vectors-bucket NAME       S3 Vectors バケット名 (デフォルト: vdbbench-dev-s3vectors-benchmark)
   --ecs-cluster NAME            ECS クラスター名 (デフォルト: vdbbench-dev-ecs-benchmark)
   --region REGION               AWS リージョン (デフォルト: ap-northeast-1)
-  --aurora-max-acu N            ACU 拡張時の MaxCapacity (デフォルト: 16)
+  --aurora-max-acu N            ACU 拡張時の MaxCapacity (デフォルト: 10)
   --opensearch-max-ocu N        OCU 拡張時の上限値 (デフォルト: 10)
+  --ecs-log-group NAME          ECS タスクの CloudWatch Logs ロググループ名
   --aurora-secret-arn ARN       Aurora Secrets Manager シークレット ARN
   --task-definition ARN         ECS タスク定義 ARN
   --subnet-ids IDS              Fargate サブネット ID（カンマ区切り）
@@ -140,6 +137,10 @@ parse_args() {
                 SECURITY_GROUP_ID="$2"
                 shift 2
                 ;;
+            --ecs-log-group)
+                ECS_LOG_GROUP="$2"
+                shift 2
+                ;;
             --help)
                 usage
                 exit 0
@@ -162,12 +163,6 @@ check_prerequisites() {
     # aws CLI の存在確認
     if ! command -v aws &>/dev/null; then
         log_error "aws CLI がインストールされていません"
-        exit 1
-    fi
-
-    # psql の存在確認
-    if ! command -v psql &>/dev/null; then
-        log_error "psql がインストールされていません"
         exit 1
     fi
 
@@ -233,19 +228,37 @@ scale_aurora_up() {
 # Aurora Serverless v2 の MaxCapacity を元の値に復元する
 scale_aurora_down() {
     local restore_min="${AURORA_ORIGINAL_MIN_ACU:-0}"
-    local restore_max="${AURORA_ORIGINAL_MAX_ACU:-16}"
+    local restore_max="${AURORA_ORIGINAL_MAX_ACU:-0.5}"
     log_info "Aurora ACU スケーリング: MaxCapacity を ${restore_max} に復元します..."
 
-    # MaxCapacity を元の値に復元
-    if ! aws rds modify-db-cluster \
-        --db-cluster-identifier "$AURORA_CLUSTER" \
-        --serverless-v2-scaling-configuration \
-        "MinCapacity=${restore_min},MaxCapacity=${restore_max}" \
-        --apply-immediately \
-        --region "$REGION" > /dev/null; then
-        log_error "Aurora ACU の復元に失敗しました"
+    # クラスターが available になるまで待機してから復元
+    if ! wait_aurora_available; then
+        log_error "Aurora クラスターが available にならないため、ACU 復元をスキップします"
         return 1
     fi
+
+    # MaxCapacity を元の値に復元（リトライ付き）
+    local max_retries=3
+    local retry=0
+    while [[ $retry -lt $max_retries ]]; do
+        if aws rds modify-db-cluster \
+            --db-cluster-identifier "$AURORA_CLUSTER" \
+            --serverless-v2-scaling-configuration \
+            "MinCapacity=${restore_min},MaxCapacity=${restore_max}" \
+            --apply-immediately \
+            --region "$REGION" > /dev/null 2>&1; then
+            break
+        fi
+        retry=$((retry + 1))
+        if [[ $retry -lt $max_retries ]]; then
+            log_info "Aurora ACU 復元リトライ（${retry}/${max_retries}）、30秒後に再試行..."
+            sleep 30
+            wait_aurora_available || true
+        else
+            log_error "Aurora ACU の復元に ${max_retries} 回失敗しました"
+            return 1
+        fi
+    done
 
     AURORA_SCALED_UP="false"
     log_info "Aurora ACU 復元コマンドを実行しました（MinCapacity=${restore_min}, MaxCapacity=${restore_max}）"
@@ -373,7 +386,7 @@ cleanup() {
     if [[ "$AURORA_SCALED_UP" == "true" ]]; then
         log_info "Aurora ACU を元の値に戻しています..."
         local restore_min="${AURORA_ORIGINAL_MIN_ACU:-0}"
-        local restore_max="${AURORA_ORIGINAL_MAX_ACU:-16}"
+        local restore_max="${AURORA_ORIGINAL_MAX_ACU:-0.5}"
         aws rds modify-db-cluster \
             --db-cluster-identifier "$AURORA_CLUSTER" \
             --serverless-v2-scaling-configuration \
@@ -398,67 +411,26 @@ cleanup() {
 trap cleanup EXIT
 
 # =============================================================================
-# Aurora インデックス操作
+# Aurora インデックス操作（ECS タスク経由）
 # =============================================================================
 
-# Secrets Manager から Aurora 認証情報を取得する
-get_aurora_credentials() {
-    log_info "Secrets Manager から Aurora 認証情報を取得中..."
-
-    local secret_json
-    secret_json=$(aws secretsmanager get-secret-value \
-        --secret-id "$AURORA_SECRET_ARN" \
-        --query 'SecretString' --output text \
-        --region "$REGION") || {
-        log_error "Secrets Manager からの認証情報取得に失敗しました（ARN: ${AURORA_SECRET_ARN}）"
-        return 1
-    }
-
-    if [[ -z "$secret_json" ]]; then
-        log_error "Secrets Manager から空のシークレットが返されました（ARN: ${AURORA_SECRET_ARN}）"
-        return 1
-    fi
-
-    AURORA_HOST=$(echo "$secret_json" | jq -r '.host')
-    AURORA_PORT=$(echo "$secret_json" | jq -r '.port // 5432')
-    AURORA_USER=$(echo "$secret_json" | jq -r '.username')
-    AURORA_PASSWORD=$(echo "$secret_json" | jq -r '.password')
-    AURORA_DBNAME=$(echo "$secret_json" | jq -r '.dbname // "postgres"')
-
-    log_info "Aurora 認証情報を取得しました（host: ${AURORA_HOST}, port: ${AURORA_PORT}, dbname: ${AURORA_DBNAME}）"
-}
-
-# Aurora の HNSW インデックス削除 + テーブル TRUNCATE
+# Aurora の HNSW インデックス削除 + テーブル TRUNCATE（ECS タスク経由）
 drop_aurora_index() {
-    log_info "Aurora インデックス削除 + TRUNCATE を実行中..."
+    log_info "Aurora インデックス削除を開始します（ECS タスク経由）..."
 
-    if ! PGPASSWORD="$AURORA_PASSWORD" psql \
-        -h "$AURORA_HOST" -p "$AURORA_PORT" \
-        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
-        -c "DROP INDEX IF EXISTS embeddings_hnsw_idx;" \
-        -c "TRUNCATE TABLE embeddings;"; then
-        log_error "Aurora インデックス削除 + TRUNCATE に失敗しました"
+    # Aurora が available であることを確認
+    if ! wait_aurora_available; then
+        log_error "Aurora クラスターが available でないため、インデックス削除をスキップします"
         return 1
     fi
 
-    log_info "Aurora インデックス削除 + TRUNCATE が完了しました"
+    run_ecs_task_with_mode "aurora" "index_drop"
 }
 
-# Aurora の HNSW インデックスを再作成する
+# Aurora の HNSW インデックスを再作成する（ECS タスク経由）
 create_aurora_index() {
-    log_info "Aurora HNSW インデックスを作成中..."
-
-    if ! PGPASSWORD="$AURORA_PASSWORD" psql \
-        -h "$AURORA_HOST" -p "$AURORA_PORT" \
-        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
-        -c "CREATE INDEX embeddings_hnsw_idx ON embeddings \
-            USING hnsw (embedding vector_cosine_ops) \
-            WITH (m = 16, ef_construction = 64);"; then
-        log_error "Aurora HNSW インデックスの作成に失敗しました"
-        return 1
-    fi
-
-    log_info "Aurora HNSW インデックスの作成が完了しました"
+    log_info "Aurora HNSW インデックス作成を開始します（ECS タスク経由）..."
+    run_ecs_task_with_mode "aurora" "index_create"
 }
 
 # =============================================================================
@@ -466,6 +438,9 @@ create_aurora_index() {
 # =============================================================================
 
 # ECS タスクを指定モードで起動し完了を待機する汎用関数
+# 戻り値: 成功時 0、失敗時 1
+# count モードの場合、グローバル変数 ECS_COUNT_RESULT にレコード数を設定する
+ECS_COUNT_RESULT=0
 run_ecs_task_with_mode() {
     local target_db="$1"
     local task_mode="$2"
@@ -532,6 +507,61 @@ run_ecs_task_with_mode() {
     fi
 
     log_info "ECS タスクが正常に完了しました（TARGET_DB=${target_db}, TASK_MODE=${task_mode}）"
+
+    # count モードの場合、CloudWatch Logs からレコード数を取得
+    if [[ "$task_mode" == "count" ]]; then
+        _extract_record_count_from_logs "$task_arn"
+    fi
+}
+
+# CloudWatch Logs から RECORD_COUNT_RESULT:N を抽出する
+_extract_record_count_from_logs() {
+    local task_arn="$1"
+    local task_id
+    task_id=$(echo "$task_arn" | awk -F'/' '{print $NF}')
+
+    local log_group="${ECS_LOG_GROUP:-vdbbench-dev-cloudwatch-ecs-bulk-ingest}"
+
+    # ログストリーム名を検索（プレフィックスは bulk-ingest/BulkIngestContainer/タスクID）
+    local log_streams
+    log_streams=$(aws logs describe-log-streams \
+        --log-group-name "$log_group" \
+        --log-stream-name-prefix "bulk-ingest/BulkIngestContainer/${task_id}" \
+        --query 'logStreams[*].logStreamName' --output json \
+        --region "$REGION" 2>/dev/null || echo "[]")
+
+    local stream_count
+    stream_count=$(echo "$log_streams" | jq 'length')
+
+    if [[ "$stream_count" -eq 0 ]]; then
+        ECS_COUNT_RESULT=0
+        log_error "レコード数取得用のログストリームが見つかりませんでした（タスク ID: ${task_id}）"
+        return
+    fi
+
+    # 最初のログストリームからログイベントを取得
+    local stream_name
+    stream_name=$(echo "$log_streams" | jq -r '.[0]')
+
+    local log_output
+    log_output=$(aws logs get-log-events \
+        --log-group-name "$log_group" \
+        --log-stream-name "$stream_name" \
+        --start-from-head \
+        --query 'events[*].message' --output text \
+        --region "$REGION" 2>/dev/null || echo "")
+
+    # RECORD_COUNT_RESULT:N パターンを抽出
+    local count_line
+    count_line=$(echo "$log_output" | grep -o 'RECORD_COUNT_RESULT:[0-9]*' | head -1 || echo "")
+
+    if [[ -n "$count_line" ]]; then
+        ECS_COUNT_RESULT=$(echo "$count_line" | cut -d':' -f2)
+        log_info "ECS タスクからレコード数を取得: ${ECS_COUNT_RESULT}"
+    else
+        ECS_COUNT_RESULT=0
+        log_error "ECS タスクログからレコード数を取得できませんでした"
+    fi
 }
 
 # =============================================================================
@@ -541,7 +571,14 @@ run_ecs_task_with_mode() {
 # OpenSearch インデックスを削除する（ECS タスク経由）
 drop_opensearch_index() {
     log_info "OpenSearch インデックス削除を開始します（ECS タスク経由）..."
-    run_ecs_task_with_mode "opensearch" "index_drop"
+    if ! run_ecs_task_with_mode "opensearch" "index_drop"; then
+        log_info "OpenSearch インデックス削除に失敗しました。60秒後にリトライします..."
+        sleep 60
+        if ! run_ecs_task_with_mode "opensearch" "index_drop"; then
+            log_error "OpenSearch インデックス削除のリトライも失敗しました"
+            return 1
+        fi
+    fi
 }
 
 # OpenSearch インデックスを作成する（ECS タスク経由）
@@ -628,32 +665,21 @@ run_ecs_task() {
 }
 
 # =============================================================================
-# レコード数取得
+# レコード数取得（ECS タスク経由）
 # =============================================================================
 
-# Aurora のレコード数を psql 経由で取得する
-get_aurora_record_count() {
-    PGPASSWORD="$AURORA_PASSWORD" psql \
-        -h "$AURORA_HOST" -p "$AURORA_PORT" \
-        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
-        -t -A -c "SELECT COUNT(*) FROM embeddings;" 2>/dev/null || echo "0"
-}
+# 指定 DB のレコード数を ECS タスク経由で取得する
+# 結果はグローバル変数 ECS_COUNT_RESULT に設定される
+get_record_count() {
+    local target_db="$1"
+    log_info "${target_db} のレコード数を取得中（ECS タスク経由）..."
 
-# OpenSearch のレコード数を取得する
-# 設計判断: OpenSearch Serverless は VPC 内からのみアクセス可能なため、
-# 直接カウントできない。投入前は 0（TRUNCATE/インデックス削除後）、
-# 投入後は RECORD_COUNT を返す。
-get_opensearch_record_count() {
-    echo "$RECORD_COUNT"
-}
-
-# S3 Vectors のレコード数を AWS CLI 経由で取得する
-get_s3vectors_record_count() {
-    aws s3vectors list-vectors \
-        --vector-bucket-name "$S3VECTORS_BUCKET" \
-        --index-name "embeddings" \
-        --query 'vectors | length(@)' --output text \
-        --region "$REGION" 2>/dev/null || echo "0"
+    if run_ecs_task_with_mode "$target_db" "count"; then
+        echo "$ECS_COUNT_RESULT"
+    else
+        log_error "${target_db} のレコード数取得に失敗しました"
+        echo "0"
+    fi
 }
 
 # =============================================================================
@@ -665,7 +691,7 @@ get_s3vectors_record_count() {
 collect_task_logs() {
     local target_db="$1"
     local result_dir="$2"
-    local log_group="/ecs/${ECS_CLUSTER}"
+    local log_group="${ECS_LOG_GROUP:-vdbbench-dev-cloudwatch-ecs-bulk-ingest}"
     local log_file="${result_dir}/${target_db}-task.log"
 
     log_info "CloudWatch Logs からタスクログを収集中（${target_db}）..."
@@ -685,7 +711,7 @@ collect_task_logs() {
     local log_streams
     log_streams=$(aws logs describe-log-streams \
         --log-group-name "$log_group" \
-        --log-stream-name-prefix "ecs/BulkIngestContainer/${task_id}" \
+        --log-stream-name-prefix "bulk-ingest/BulkIngestContainer/${task_id}" \
         --query 'logStreams[*].logStreamName' --output json \
         --region "$REGION" 2>/dev/null) || {
         log_error "ログストリームの検索に失敗しました（ロググループ: ${log_group}）"
@@ -817,6 +843,8 @@ create_result_dir() {
 #   $14 - acu_after: ACU 変更後値
 #   $15 - success: 成功フラグ（true/false）
 #   $16 - error_message: エラーメッセージ（なければ null）
+#   $17 - fargate_cost_usd: Fargate 概算コスト（USD）
+#   $18 - opensearch_ocu_max: OpenSearch OCU 上限値（OpenSearch のみ）
 save_result_json() {
     local database="$1"
     local record_count="$2"
@@ -834,6 +862,8 @@ save_result_json() {
     local acu_after="${14}"
     local success="${15}"
     local error_message="${16}"
+    local fargate_cost_usd="${17:-0}"
+    local opensearch_ocu_max="${18:-0}"
 
     # スループット算出（duration_seconds が 0 の場合は 0）
     local throughput="0"
@@ -871,6 +901,8 @@ save_result_json() {
         --argjson acu_after "$acu_after" \
         --argjson success "$success" \
         --arg error_message "$error_message" \
+        --argjson fargate_cost_usd "$fargate_cost_usd" \
+        --argjson opensearch_ocu_max "$opensearch_ocu_max" \
         '{
             database: $database,
             record_count: $record_count,
@@ -887,6 +919,8 @@ save_result_json() {
             acu_before: $acu_before,
             acu_during: $acu_during,
             acu_after: $acu_after,
+            fargate_cost_usd: $fargate_cost_usd,
+            opensearch_ocu_max: $opensearch_ocu_max,
             success: $success,
             error_message: (if $error_message == "" then null else $error_message end)
         }' > "$output_file"
@@ -1111,29 +1145,11 @@ run_benchmark_cycle() {
             ;;
     esac
 
-    # --- Step 2: Aurora 認証情報取得（Aurora のみ） ---
-    if [[ "$target_db" == "aurora" ]]; then
-        if ! get_aurora_credentials; then
-            cycle_success="false"
-            cycle_error="Aurora 認証情報の取得に失敗"
-            log_error "$cycle_error"
-            scale_aurora_down || true
-            save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
-                "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-                "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
-            return 0
-        fi
-    fi
-
-    # --- Step 3: 投入前レコード数取得 ---
-    case "$target_db" in
-        aurora)      pre_count=$(get_aurora_record_count) ;;
-        opensearch)  pre_count=0 ;;
-        s3vectors)   pre_count=$(get_s3vectors_record_count) ;;
-    esac
+    # --- Step 2: 投入前レコード数取得 ---
+    pre_count=$(get_record_count "$target_db")
     log_info "${db_label} 投入前レコード数: ${pre_count}"
 
-    # --- Step 4: インデックス削除 ---
+    # --- Step 3: インデックス削除 ---
     case "$target_db" in
         aurora)
             if drop_aurora_index; then
@@ -1169,7 +1185,7 @@ run_benchmark_cycle() {
             ;;
     esac
 
-    # --- Step 5: ECS タスク実行（データ投入） ---
+    # --- Step 4: ECS タスク実行（データ投入） ---
     if ! run_ecs_task "$target_db" "$RECORD_COUNT"; then
         cycle_success="false"
         cycle_error="ECS データ投入タスクが失敗（target_db=${target_db}）"
@@ -1197,7 +1213,7 @@ run_benchmark_cycle() {
     # Fargate 合計秒数を加算
     fargate_total_seconds=$((fargate_total_seconds + duration_seconds))
 
-    # --- Step 6: インデックス作成 ---
+    # --- Step 5: インデックス作成 ---
     case "$target_db" in
         aurora)
             if create_aurora_index; then
@@ -1219,18 +1235,14 @@ run_benchmark_cycle() {
             ;;
     esac
 
-    # --- Step 7: 投入後レコード数取得 ---
-    case "$target_db" in
-        aurora)      post_count=$(get_aurora_record_count) ;;
-        opensearch)  post_count=$(get_opensearch_record_count) ;;
-        s3vectors)   post_count=$(get_s3vectors_record_count) ;;
-    esac
+    # --- Step 6: 投入後レコード数取得 ---
+    post_count=$(get_record_count "$target_db")
     log_info "${db_label} 投入後レコード数: ${post_count}"
 
-    # --- Step 8: ログ収集 ---
+    # --- Step 7: ログ収集 ---
     collect_task_logs "$target_db" "$RESULT_DIR" || log_error "ログ収集に失敗しましたが、処理を続行します"
 
-    # --- Step 9: メトリクス収集 ---
+    # --- Step 8: メトリクス収集 ---
     case "$target_db" in
         aurora)
             acu_during=$(collect_aurora_metrics)
@@ -1243,12 +1255,18 @@ run_benchmark_cycle() {
             ;;
     esac
 
-    # --- Step 10: Fargate コスト算出 ---
+    # --- Step 9: Fargate コスト算出 ---
     local fargate_cost
     fargate_cost=$(calculate_fargate_cost "$duration_seconds")
     log_info "${db_label} Fargate 概算コスト: \$${fargate_cost}"
 
-    # --- Step 11: スケーリング復元 ---
+    # OpenSearch OCU 上限値を記録
+    local db_opensearch_ocu_max=0
+    if [[ "$target_db" == "opensearch" ]]; then
+        db_opensearch_ocu_max="$OPENSEARCH_MAX_OCU"
+    fi
+
+    # --- Step 10: スケーリング復元 ---
     case "$target_db" in
         aurora)
             scale_aurora_down || log_error "Aurora ACU 復元に失敗しましたが、処理を続行します"
@@ -1261,10 +1279,12 @@ run_benchmark_cycle() {
             ;;
     esac
 
-    # --- Step 12: 結果 JSON 保存 ---
+    # --- Step 11: 結果 JSON 保存 ---
+    log_info "${db_label} 結果サマリー: 投入前=${pre_count}, 投入後=${post_count}, 処理時間=${duration_seconds}秒, Fargate コスト=\$${fargate_cost}"
     save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
         "$START_TIME" "$END_TIME" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-        "$TASK_ARN" "$EXIT_CODE" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+        "$TASK_ARN" "$EXIT_CODE" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error" \
+        "$fargate_cost" "$db_opensearch_ocu_max"
 
     log_info "===== ${db_label} ベンチマークサイクル完了 ====="
 }
