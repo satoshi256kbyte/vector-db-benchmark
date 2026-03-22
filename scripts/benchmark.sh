@@ -173,6 +173,12 @@ check_prerequisites() {
         exit 1
     fi
 
+    # bc の存在確認
+    if ! command -v bc &>/dev/null; then
+        log_error "bc がインストールされていません"
+        exit 1
+    fi
+
     # AWS 認証情報の確認
     if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
         log_error "AWS 認証情報が無効です。aws configure または SSO ログインを確認してください"
@@ -633,8 +639,130 @@ get_s3vectors_record_count() {
 }
 
 # =============================================================================
+# ログ収集・メトリクス取得・コスト算出
+# =============================================================================
+
+# CloudWatch Logs から ECS タスクのログを収集しファイルに保存する
+# グローバル変数 TASK_ARN からタスク ID を抽出してログストリームをフィルタする
+collect_task_logs() {
+    local target_db="$1"
+    local result_dir="$2"
+    local log_group="/ecs/${ECS_CLUSTER}"
+    local log_file="${result_dir}/${target_db}-task.log"
+
+    log_info "CloudWatch Logs からタスクログを収集中（${target_db}）..."
+
+    # TASK_ARN からタスク ID を抽出（例: arn:aws:ecs:region:account:task/cluster/TASK_ID）
+    local task_id
+    task_id=$(echo "$TASK_ARN" | awk -F'/' '{print $NF}')
+
+    if [[ -z "$task_id" ]]; then
+        log_error "タスク ID を TASK_ARN から抽出できませんでした: ${TASK_ARN}"
+        return 1
+    fi
+
+    log_info "タスク ID: ${task_id}, ロググループ: ${log_group}"
+
+    # タスク ID を含むログストリームを検索
+    local log_streams
+    log_streams=$(aws logs describe-log-streams \
+        --log-group-name "$log_group" \
+        --log-stream-name-prefix "ecs/BulkIngestContainer/${task_id}" \
+        --query 'logStreams[*].logStreamName' --output json \
+        --region "$REGION" 2>/dev/null) || {
+        log_error "ログストリームの検索に失敗しました（ロググループ: ${log_group}）"
+        return 1
+    }
+
+    local stream_count
+    stream_count=$(echo "$log_streams" | jq 'length')
+
+    if [[ "$stream_count" -eq 0 ]]; then
+        log_error "該当するログストリームが見つかりませんでした（タスク ID: ${task_id}）"
+        return 1
+    fi
+
+    # 各ログストリームからログイベントを取得してファイルに保存
+    > "$log_file"
+    local stream_name
+    for stream_name in $(echo "$log_streams" | jq -r '.[]'); do
+        aws logs get-log-events \
+            --log-group-name "$log_group" \
+            --log-stream-name "$stream_name" \
+            --start-from-head \
+            --query 'events[*].message' --output text \
+            --region "$REGION" >> "$log_file" 2>/dev/null || {
+            log_error "ログイベントの取得に失敗しました（ストリーム: ${stream_name}）"
+            continue
+        }
+    done
+
+    log_info "タスクログを保存しました: ${log_file}"
+}
+
+# CloudWatch メトリクスから Aurora Serverless v2 の ACU 値を取得する
+# グローバル変数 START_TIME, END_TIME を使用してメトリクス期間を指定する
+collect_aurora_metrics() {
+    log_info "Aurora ACU メトリクスを取得中..."
+
+    local metric_json
+    metric_json=$(aws cloudwatch get-metric-data \
+        --metric-data-queries '[
+            {
+                "Id": "acu",
+                "MetricStat": {
+                    "Metric": {
+                        "Namespace": "AWS/RDS",
+                        "MetricName": "ServerlessDatabaseCapacity",
+                        "Dimensions": [
+                            {
+                                "Name": "DBClusterIdentifier",
+                                "Value": "'"$AURORA_CLUSTER"'"
+                            }
+                        ]
+                    },
+                    "Period": 60,
+                    "Stat": "Maximum"
+                },
+                "ReturnData": true
+            }
+        ]' \
+        --start-time "$START_TIME" \
+        --end-time "$END_TIME" \
+        --region "$REGION" 2>/dev/null) || {
+        log_error "Aurora ACU メトリクスの取得に失敗しました"
+        echo "0"
+        return 0
+    }
+
+    local acu_value
+    acu_value=$(echo "$metric_json" | jq -r '.MetricDataResults[0].Values | max // 0')
+
+    if [[ -z "$acu_value" || "$acu_value" == "null" ]]; then
+        acu_value="0"
+    fi
+
+    log_info "Aurora ACU ピーク値: ${acu_value}"
+    echo "$acu_value"
+}
+
+# Fargate 概算コストを算出する（ap-northeast-1 料金）
+# vCPU: $0.05056/時間, メモリ: $0.00553/GB/時間
+calculate_fargate_cost() {
+    local duration_seconds="$1"
+    local vcpu=2
+    local memory_gb=4
+    local hours
+    hours=$(echo "scale=6; $duration_seconds / 3600" | bc)
+    local vcpu_cost
+    vcpu_cost=$(echo "scale=6; $hours * $vcpu * 0.05056" | bc)
+    local memory_cost
+    memory_cost=$(echo "scale=6; $hours * $memory_gb * 0.00553" | bc)
+    echo "scale=4; $vcpu_cost + $memory_cost" | bc
+}
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - collect_task_logs / collect_aurora_metrics / calculate_fargate_cost (Task 6.2)
 # - save_result_json / generate_summary (Task 6.3)
 # - run_benchmark_cycle / main (Task 7.1)
 # =============================================================================
