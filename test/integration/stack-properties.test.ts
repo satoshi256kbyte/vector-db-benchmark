@@ -112,4 +112,85 @@ describe("CDK プロパティテスト", () => {
 
     expect(violations).toEqual([]);
   });
+
+  /**
+   * プロパティ 7: 新規リソースの削除ポリシー
+   *
+   * Spec 03 で追加された ECS タスク定義、ECS クラスター、検索テスト Lambda 等の
+   * 新規リソースに対して、DeletionPolicy が "Delete" に設定されている、
+   * または未設定（CloudFormation デフォルト = Delete）であること。
+   *
+   * **Validates: Requirements 8.1, 8.2**
+   * Feature: 03-vector-benchmark-execution, Property 7: 全リソースの削除ポリシー
+   */
+  test("プロパティ 7: Spec 03 新規リソースが cdk destroy で完全削除可能であること", () => {
+    const resources = templateJson.Resources;
+
+    // Spec 03 で追加された新規リソースタイプ
+    const spec03ResourceTypes = [
+      "AWS::ECS::Cluster",
+      "AWS::ECS::TaskDefinition",
+      "AWS::Logs::LogGroup",
+    ];
+
+    const violations: string[] = [];
+
+    for (const [logicalId, resource] of Object.entries(resources)) {
+      const res = resource as Record<string, any>;
+      const resourceType = res.Type as string;
+
+      if (!spec03ResourceTypes.includes(resourceType)) {
+        continue;
+      }
+
+      // DeletionPolicy が設定されている場合は "Delete" であること
+      // 未設定の場合は CloudFormation デフォルト（Delete）が適用される
+      if (
+        res.DeletionPolicy !== undefined &&
+        res.DeletionPolicy !== "Delete"
+      ) {
+        violations.push(
+          `${logicalId} (${resourceType}): DeletionPolicy = "${res.DeletionPolicy}" (expected "Delete")`,
+        );
+      }
+
+      // UpdateReplacePolicy も同様にチェック
+      if (
+        res.UpdateReplacePolicy !== undefined &&
+        res.UpdateReplacePolicy !== "Delete"
+      ) {
+        violations.push(
+          `${logicalId} (${resourceType}): UpdateReplacePolicy = "${res.UpdateReplacePolicy}" (expected "Delete")`,
+        );
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  /**
+   * 検索テスト Lambda が存在し削除可能であること
+   */
+  test("プロパティ 7: 検索テスト Lambda が存在し削除ポリシーが正しいこと", () => {
+    // SearchTest Lambda が存在することを確認
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "vdbbench-dev-lambda-search-test",
+    });
+
+    // Lambda リソースの DeletionPolicy を確認
+    const resources = templateJson.Resources;
+    for (const [, resource] of Object.entries(resources)) {
+      const res = resource as Record<string, any>;
+      if (
+        res.Type === "AWS::Lambda::Function" &&
+        res.Properties?.FunctionName === "vdbbench-dev-lambda-search-test"
+      ) {
+        // 未設定（undefined）または "Delete" であること
+        expect(
+          res.DeletionPolicy === undefined ||
+            res.DeletionPolicy === "Delete",
+        ).toBe(true);
+      }
+    }
+  });
 });
