@@ -30,6 +30,8 @@ OPENSEARCH_SCALED_UP="false"
 # =============================================================================
 TASK_DEFINITION=""
 AURORA_SECRET_ARN=""
+SUBNET_IDS=""
+SECURITY_GROUP_ID=""
 
 # Aurora 認証情報（get_aurora_credentials で設定）
 AURORA_HOST=""
@@ -73,6 +75,9 @@ Options:
   --aurora-min-acu N            ACU 拡張時の最小値 (デフォルト: 8)
   --opensearch-max-ocu N        OCU 拡張時の上限値 (デフォルト: 10)
   --aurora-secret-arn ARN       Aurora Secrets Manager シークレット ARN
+  --task-definition ARN         ECS タスク定義 ARN
+  --subnet-ids IDS              Fargate サブネット ID（カンマ区切り）
+  --security-group-id ID        Fargate セキュリティグループ ID
   --help                        ヘルプ表示
 EOF
 }
@@ -117,6 +122,18 @@ parse_args() {
                 ;;
             --aurora-secret-arn)
                 AURORA_SECRET_ARN="$2"
+                shift 2
+                ;;
+            --task-definition)
+                TASK_DEFINITION="$2"
+                shift 2
+                ;;
+            --subnet-ids)
+                SUBNET_IDS="$2"
+                shift 2
+                ;;
+            --security-group-id)
+                SECURITY_GROUP_ID="$2"
                 shift 2
                 ;;
             --help)
@@ -421,8 +438,96 @@ create_aurora_index() {
 }
 
 # =============================================================================
+# ECS タスクモード実行（OpenSearch インデックス操作用）
+# =============================================================================
+
+# ECS タスクを指定モードで起動し完了を待機する汎用関数
+run_ecs_task_with_mode() {
+    local target_db="$1"
+    local task_mode="$2"
+    local task_arn
+    local exit_code
+
+    log_info "ECS タスクを起動中（TARGET_DB=${target_db}, TASK_MODE=${task_mode}）..."
+
+    task_arn=$(aws ecs run-task \
+        --cluster "$ECS_CLUSTER" \
+        --task-definition "$TASK_DEFINITION" \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[${SUBNET_IDS}],securityGroups=[${SECURITY_GROUP_ID}],assignPublicIp=DISABLED}" \
+        --overrides '{
+            "containerOverrides": [{
+                "name": "BulkIngestContainer",
+                "environment": [
+                    {"name": "TARGET_DB", "value": "'"$target_db"'"},
+                    {"name": "TASK_MODE", "value": "'"$task_mode"'"}
+                ]
+            }]
+        }' \
+        --query 'tasks[0].taskArn' --output text \
+        --region "$REGION") || {
+        log_error "ECS タスクの起動に失敗しました（TARGET_DB=${target_db}, TASK_MODE=${task_mode}）"
+        return 1
+    }
+
+    if [[ -z "$task_arn" || "$task_arn" == "None" ]]; then
+        log_error "ECS タスク ARN を取得できませんでした（TARGET_DB=${target_db}, TASK_MODE=${task_mode}）"
+        return 1
+    fi
+
+    log_info "ECS タスクを起動しました: ${task_arn}"
+    log_info "ECS タスクの完了を待機中..."
+
+    aws ecs wait tasks-stopped \
+        --cluster "$ECS_CLUSTER" \
+        --tasks "$task_arn" \
+        --region "$REGION" || {
+        log_error "ECS タスクの待機に失敗しました: ${task_arn}"
+        return 1
+    }
+
+    # 終了コード確認
+    exit_code=$(aws ecs describe-tasks \
+        --cluster "$ECS_CLUSTER" \
+        --tasks "$task_arn" \
+        --query 'tasks[0].containers[0].exitCode' --output text \
+        --region "$REGION") || {
+        log_error "ECS タスクの終了コード取得に失敗しました: ${task_arn}"
+        return 1
+    }
+
+    if [[ "$exit_code" != "0" ]]; then
+        local stop_reason
+        stop_reason=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$task_arn" \
+            --query 'tasks[0].stoppedReason' --output text \
+            --region "$REGION" 2>/dev/null || echo "不明")
+        log_error "ECS タスクが異常終了しました（終了コード: ${exit_code}, 理由: ${stop_reason}）"
+        return 1
+    fi
+
+    log_info "ECS タスクが正常に完了しました（TARGET_DB=${target_db}, TASK_MODE=${task_mode}）"
+}
+
+# =============================================================================
+# OpenSearch インデックス操作（ECS タスク経由）
+# =============================================================================
+
+# OpenSearch インデックスを削除する（ECS タスク経由）
+drop_opensearch_index() {
+    log_info "OpenSearch インデックス削除を開始します（ECS タスク経由）..."
+    run_ecs_task_with_mode "opensearch" "index_drop"
+}
+
+# OpenSearch インデックスを作成する（ECS タスク経由）
+create_opensearch_index() {
+    log_info "OpenSearch インデックス作成を開始します（ECS タスク経由）..."
+    run_ecs_task_with_mode "opensearch" "index_create"
+}
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - drop_opensearch_index / create_opensearch_index / run_ecs_task_with_mode (Task 5.2)
 # - run_ecs_task (Task 5.3)
 # - get_*_record_count (Task 6.1)
 # - collect_task_logs / collect_aurora_metrics / calculate_fargate_cost (Task 6.2)
