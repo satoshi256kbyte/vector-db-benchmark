@@ -29,6 +29,14 @@ OPENSEARCH_SCALED_UP="false"
 # プレースホルダー変数（後続タスクで設定）
 # =============================================================================
 TASK_DEFINITION=""
+AURORA_SECRET_ARN=""
+
+# Aurora 認証情報（get_aurora_credentials で設定）
+AURORA_HOST=""
+AURORA_PORT=""
+AURORA_USER=""
+AURORA_PASSWORD=""
+AURORA_DBNAME=""
 
 # =============================================================================
 # ログユーティリティ
@@ -64,6 +72,7 @@ Options:
   --region REGION               AWS リージョン (デフォルト: ap-northeast-1)
   --aurora-min-acu N            ACU 拡張時の最小値 (デフォルト: 8)
   --opensearch-max-ocu N        OCU 拡張時の上限値 (デフォルト: 10)
+  --aurora-secret-arn ARN       Aurora Secrets Manager シークレット ARN
   --help                        ヘルプ表示
 EOF
 }
@@ -104,6 +113,10 @@ parse_args() {
                 ;;
             --opensearch-max-ocu)
                 OPENSEARCH_MAX_OCU="$2"
+                shift 2
+                ;;
+            --aurora-secret-arn)
+                AURORA_SECRET_ARN="$2"
                 shift 2
                 ;;
             --help)
@@ -344,8 +357,71 @@ cleanup() {
 trap cleanup EXIT
 
 # =============================================================================
+# Aurora インデックス操作
+# =============================================================================
+
+# Secrets Manager から Aurora 認証情報を取得する
+get_aurora_credentials() {
+    log_info "Secrets Manager から Aurora 認証情報を取得中..."
+
+    local secret_json
+    secret_json=$(aws secretsmanager get-secret-value \
+        --secret-id "$AURORA_SECRET_ARN" \
+        --query 'SecretString' --output text \
+        --region "$REGION") || {
+        log_error "Secrets Manager からの認証情報取得に失敗しました（ARN: ${AURORA_SECRET_ARN}）"
+        return 1
+    }
+
+    if [[ -z "$secret_json" ]]; then
+        log_error "Secrets Manager から空のシークレットが返されました（ARN: ${AURORA_SECRET_ARN}）"
+        return 1
+    fi
+
+    AURORA_HOST=$(echo "$secret_json" | jq -r '.host')
+    AURORA_PORT=$(echo "$secret_json" | jq -r '.port // 5432')
+    AURORA_USER=$(echo "$secret_json" | jq -r '.username')
+    AURORA_PASSWORD=$(echo "$secret_json" | jq -r '.password')
+    AURORA_DBNAME=$(echo "$secret_json" | jq -r '.dbname // "postgres"')
+
+    log_info "Aurora 認証情報を取得しました（host: ${AURORA_HOST}, port: ${AURORA_PORT}, dbname: ${AURORA_DBNAME}）"
+}
+
+# Aurora の HNSW インデックス削除 + テーブル TRUNCATE
+drop_aurora_index() {
+    log_info "Aurora インデックス削除 + TRUNCATE を実行中..."
+
+    if ! PGPASSWORD="$AURORA_PASSWORD" psql \
+        -h "$AURORA_HOST" -p "$AURORA_PORT" \
+        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
+        -c "DROP INDEX IF EXISTS embeddings_hnsw_idx;" \
+        -c "TRUNCATE TABLE embeddings;"; then
+        log_error "Aurora インデックス削除 + TRUNCATE に失敗しました"
+        return 1
+    fi
+
+    log_info "Aurora インデックス削除 + TRUNCATE が完了しました"
+}
+
+# Aurora の HNSW インデックスを再作成する
+create_aurora_index() {
+    log_info "Aurora HNSW インデックスを作成中..."
+
+    if ! PGPASSWORD="$AURORA_PASSWORD" psql \
+        -h "$AURORA_HOST" -p "$AURORA_PORT" \
+        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
+        -c "CREATE INDEX embeddings_hnsw_idx ON embeddings \
+            USING hnsw (embedding vector_cosine_ops) \
+            WITH (m = 16, ef_construction = 64);"; then
+        log_error "Aurora HNSW インデックスの作成に失敗しました"
+        return 1
+    fi
+
+    log_info "Aurora HNSW インデックスの作成が完了しました"
+}
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - get_aurora_credentials / drop_aurora_index / create_aurora_index (Task 5.1)
 # - drop_opensearch_index / create_opensearch_index / run_ecs_task_with_mode (Task 5.2)
 # - run_ecs_task (Task 5.3)
 # - get_*_record_count (Task 6.1)
