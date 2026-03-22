@@ -527,8 +527,84 @@ create_opensearch_index() {
 }
 
 # =============================================================================
+# ECS タスク実行（データ投入）
+# =============================================================================
+
+# ECS タスクを起動しデータ投入を実行する
+# グローバル変数 TASK_ARN, START_TIME, END_TIME, EXIT_CODE を設定する
+run_ecs_task() {
+    local target_db="$1"
+    local record_count="$2"
+
+    log_info "ECS データ投入タスクを起動中（TARGET_DB=${target_db}, RECORD_COUNT=${record_count}）..."
+
+    START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    TASK_ARN=$(aws ecs run-task \
+        --cluster "$ECS_CLUSTER" \
+        --task-definition "$TASK_DEFINITION" \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[${SUBNET_IDS}],securityGroups=[${SECURITY_GROUP_ID}],assignPublicIp=DISABLED}" \
+        --overrides '{
+            "containerOverrides": [{
+                "name": "BulkIngestContainer",
+                "environment": [
+                    {"name": "TARGET_DB", "value": "'"$target_db"'"},
+                    {"name": "TASK_MODE", "value": "ingest"},
+                    {"name": "RECORD_COUNT", "value": "'"$record_count"'"}
+                ]
+            }]
+        }' \
+        --query 'tasks[0].taskArn' --output text \
+        --region "$REGION") || {
+        log_error "ECS データ投入タスクの起動に失敗しました（TARGET_DB=${target_db}）"
+        return 1
+    }
+
+    if [[ -z "$TASK_ARN" || "$TASK_ARN" == "None" ]]; then
+        log_error "ECS タスク ARN を取得できませんでした（TARGET_DB=${target_db}）"
+        return 1
+    fi
+
+    log_info "ECS データ投入タスクを起動しました: ${TASK_ARN}"
+    log_info "ECS タスクの完了を待機中..."
+
+    aws ecs wait tasks-stopped \
+        --cluster "$ECS_CLUSTER" \
+        --tasks "$TASK_ARN" \
+        --region "$REGION" || {
+        log_error "ECS タスクの待機に失敗しました: ${TASK_ARN}"
+        return 1
+    }
+
+    END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # 終了コード確認
+    EXIT_CODE=$(aws ecs describe-tasks \
+        --cluster "$ECS_CLUSTER" \
+        --tasks "$TASK_ARN" \
+        --query 'tasks[0].containers[0].exitCode' --output text \
+        --region "$REGION") || {
+        log_error "ECS タスクの終了コード取得に失敗しました: ${TASK_ARN}"
+        return 1
+    }
+
+    if [[ "$EXIT_CODE" != "0" ]]; then
+        local stop_reason
+        stop_reason=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].stoppedReason' --output text \
+            --region "$REGION" 2>/dev/null || echo "不明")
+        log_error "ECS データ投入タスクが異常終了しました（終了コード: ${EXIT_CODE}, 理由: ${stop_reason}）"
+        return 1
+    fi
+
+    log_info "ECS データ投入タスクが正常に完了しました（TARGET_DB=${target_db}, 開始: ${START_TIME}, 終了: ${END_TIME}）"
+}
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - run_ecs_task (Task 5.3)
 # - get_*_record_count (Task 6.1)
 # - collect_task_logs / collect_aurora_metrics / calculate_fargate_cost (Task 6.2)
 # - save_result_json / generate_summary (Task 6.3)
