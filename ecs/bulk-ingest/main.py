@@ -246,6 +246,7 @@ def _create_failure_result(db_name: str, record_count: int, error: str) -> Datab
 
 
 VALID_TARGET_DBS = {"all", "aurora", "opensearch", "s3vectors"}
+VALID_TASK_MODES = {"ingest", "index_drop", "index_create"}
 
 
 def _run_data_ingestion_only(
@@ -309,6 +310,50 @@ def _run_data_ingestion_only(
             success=False,
             error_message=str(exc),
         )
+
+
+def _run_index_operation(target_db: str, operation: str) -> None:
+    """指定 DB に対してインデックス操作のみを実行する.
+
+    TASK_MODE が index_drop または index_create の場合に呼び出される。
+    シェルスクリプトから ECS タスク経由でインデックス操作を実行するために使用する。
+
+    Args:
+        target_db: 対象 DB 識別子（"aurora", "opensearch", "s3vectors"）
+        operation: 操作種別（"drop" または "create"）
+    """
+    log = logger.bind(target_db=target_db, operation=operation)
+    log.info("index_operation_start")
+
+    if target_db == "aurora":
+        try:
+            conn = _get_aurora_connection()
+            index_manager = AuroraIndexManager(conn)
+        except Exception as exc:
+            log.error("aurora_connection_failed", error=str(exc))
+            sys.exit(1)
+    elif target_db == "opensearch":
+        try:
+            os_client = _get_opensearch_client()
+            index_manager = OpenSearchIndexManager(os_client)
+        except Exception as exc:
+            log.error("opensearch_connection_failed", error=str(exc))
+            sys.exit(1)
+    elif target_db == "s3vectors":
+        index_manager = S3VectorsIndexManager()
+    else:
+        log.error("invalid_target_db_for_index_operation", target_db=target_db)
+        sys.exit(1)
+
+    try:
+        if operation == "drop":
+            index_manager.drop_index()
+        else:
+            index_manager.create_index()
+        log.info("index_operation_complete")
+    except Exception as exc:
+        log.error("index_operation_failed", error=str(exc))
+        sys.exit(1)
 
 
 def _run_single_database(target_db: str, record_count: int) -> None:
@@ -415,24 +460,44 @@ def _run_all_databases(record_count: int) -> None:
 
 
 def main() -> None:
-    """メインエントリポイント: TARGET_DB に応じてデータ投入を実行する.
+    """メインエントリポイント: TARGET_DB / TASK_MODE に応じて処理を実行する.
 
     環境変数 TARGET_DB の値に応じて処理対象 DB を切り替える:
     - "all" または未設定: 3つのDB全てを順次処理（インデックス操作含む、後方互換性維持）
     - "aurora" / "opensearch" / "s3vectors": 指定DBのデータ投入のみ（インデックス操作なし）
     - その他: エラーログ出力 + sys.exit(1)
+
+    環境変数 TASK_MODE の値に応じて実行モードを切り替える:
+    - "ingest" または未設定: データ投入モード（デフォルト）
+    - "index_drop": インデックス削除のみ実行
+    - "index_create": インデックス作成のみ実行
+    - その他: エラーログ出力 + sys.exit(1)
     """
     logger.info("bulk_ingest_start")
 
     target_db = os.environ.get("TARGET_DB", "all").lower()
+    task_mode = os.environ.get("TASK_MODE", "ingest").lower()
     record_count = int(os.environ.get("RECORD_COUNT", "100000"))
 
-    logger.info("parameters", target_db=target_db, record_count=record_count)
+    logger.info("parameters", target_db=target_db, task_mode=task_mode, record_count=record_count)
 
     if target_db not in VALID_TARGET_DBS:
         logger.error("invalid_target_db", target_db=target_db)
         sys.exit(1)
 
+    if task_mode not in VALID_TASK_MODES:
+        logger.error("invalid_task_mode", task_mode=task_mode)
+        sys.exit(1)
+
+    if task_mode == "index_drop":
+        _run_index_operation(target_db, "drop")
+        return
+
+    if task_mode == "index_create":
+        _run_index_operation(target_db, "create")
+        return
+
+    # task_mode == "ingest"
     if target_db == "all":
         _run_all_databases(record_count)
     else:
