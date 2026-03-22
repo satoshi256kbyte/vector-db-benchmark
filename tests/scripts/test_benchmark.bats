@@ -158,3 +158,118 @@ setup() {
     [ "$AURORA_MIN_ACU" = "2" ]
     [ "$OPENSEARCH_MAX_OCU" = "5" ]
 }
+
+# =============================================================================
+# テスト: --help オプションの出力確認
+# **Validates: Requirements 10.9**
+# =============================================================================
+
+@test "--help オプションで Usage 情報が表示され、終了コード 0 で終了する" {
+    run bash "$BENCHMARK_SCRIPT" --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Usage:"* ]]
+    [[ "$output" == *"--record-count"* ]]
+    [[ "$output" == *"--help"* ]]
+}
+
+# =============================================================================
+# テスト: 前提条件チェック（aws, psql, jq 不在時のエラー）
+# **Validates: Requirements 10.9, 11.5**
+# =============================================================================
+
+@test "check_prerequisites: aws 不在時にエラー終了する" {
+    run bash -c '
+        eval "$(sed -n "1,/^# エントリポイント$/p" "'"$BENCHMARK_SCRIPT"'" \
+            | sed "s/^set -euo pipefail$//" \
+            | grep -v "^trap " \
+            | grep -v "^parse_args \"\\\$@\"" \
+            | grep -v "^check_prerequisites$" \
+            | grep -v "^main$")"
+        command() { if [[ "$2" == "aws" ]]; then return 1; fi; builtin command "$@"; }
+        check_prerequisites
+    '
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"aws"* ]]
+}
+
+@test "check_prerequisites: psql 不在時にエラー終了する" {
+    run bash -c '
+        eval "$(sed -n "1,/^# エントリポイント$/p" "'"$BENCHMARK_SCRIPT"'" \
+            | sed "s/^set -euo pipefail$//" \
+            | grep -v "^trap " \
+            | grep -v "^parse_args \"\\\$@\"" \
+            | grep -v "^check_prerequisites$" \
+            | grep -v "^main$")"
+        command() { if [[ "$2" == "psql" ]]; then return 1; fi; builtin command "$@"; }
+        check_prerequisites
+    '
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"psql"* ]]
+}
+
+@test "check_prerequisites: jq 不在時にエラー終了する" {
+    run bash -c '
+        eval "$(sed -n "1,/^# エントリポイント$/p" "'"$BENCHMARK_SCRIPT"'" \
+            | sed "s/^set -euo pipefail$//" \
+            | grep -v "^trap " \
+            | grep -v "^parse_args \"\\\$@\"" \
+            | grep -v "^check_prerequisites$" \
+            | grep -v "^main$")"
+        command() { if [[ "$2" == "jq" ]]; then return 1; fi; builtin command "$@"; }
+        check_prerequisites
+    '
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"jq"* ]]
+}
+
+# =============================================================================
+# テスト: DB 処理順序（Aurora → OpenSearch → S3 Vectors）の検証
+# **Validates: Requirements 12.1**
+# =============================================================================
+
+@test "main: DB 処理順序が Aurora → OpenSearch → S3 Vectors であること" {
+    run bash -c '
+        eval "$(sed -n "1,/^# エントリポイント$/p" "'"$BENCHMARK_SCRIPT"'" \
+            | sed "s/^set -euo pipefail$//" \
+            | grep -v "^trap " \
+            | grep -v "^parse_args \"\\\$@\"" \
+            | grep -v "^check_prerequisites$" \
+            | grep -v "^main$")"
+        ORDER=""
+        run_benchmark_cycle() { ORDER="${ORDER}$1,"; }
+        create_result_dir() { RESULT_DIR=$(mktemp -d); BENCHMARK_ID="test"; }
+        generate_summary() { :; }
+        print_summary() { :; }
+        calculate_fargate_cost() { echo "0"; }
+        main
+        echo "$ORDER"
+    '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"aurora,opensearch,s3vectors,"* ]]
+}
+
+# =============================================================================
+# テスト: エラー発生時の次 DB 継続動作の検証
+# **Validates: Requirements 11.3**
+# =============================================================================
+
+@test "main: 1つの DB でエラーが発生しても次の DB の処理に進むこと" {
+    run bash -c '
+        eval "$(sed -n "1,/^# エントリポイント$/p" "'"$BENCHMARK_SCRIPT"'" \
+            | sed "s/^set -euo pipefail$//" \
+            | grep -v "^trap " \
+            | grep -v "^parse_args \"\\\$@\"" \
+            | grep -v "^check_prerequisites$" \
+            | grep -v "^main$")"
+        CALL_COUNT=0
+        run_benchmark_cycle() { CALL_COUNT=$((CALL_COUNT + 1)); if [[ "$1" == "aurora" ]]; then return 1; fi; }
+        create_result_dir() { RESULT_DIR=$(mktemp -d); BENCHMARK_ID="test"; }
+        generate_summary() { :; }
+        print_summary() { :; }
+        calculate_fargate_cost() { echo "0"; }
+        main
+        echo "CALL_COUNT=$CALL_COUNT"
+    '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"CALL_COUNT=3"* ]]
+}
