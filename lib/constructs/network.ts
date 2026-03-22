@@ -1,4 +1,3 @@
-import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import { Construct } from "constructs";
 
@@ -127,9 +126,7 @@ export class NetworkConstruct extends Construct {
 
     // VPC Endpoint: S3 Vectors
     this.vpc.addInterfaceEndpoint("S3VectorsEndpoint", {
-      service: new ec2.InterfaceVpcEndpointService(
-        `com.amazonaws.${cdk.Aws.REGION}.s3vectors`,
-      ),
+      service: ec2.InterfaceVpcEndpointAwsService.S3_VECTORS,
       subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [this.vpcEndpointSg],
     });

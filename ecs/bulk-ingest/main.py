@@ -30,6 +30,8 @@ logger = structlog.get_logger()
 
 MAX_CONNECTION_RETRIES = 3
 CONNECTION_RETRY_DELAY_SECONDS = 2
+OPENSEARCH_MAX_RETRIES = 6
+OPENSEARCH_RETRY_DELAY_SECONDS = 5
 
 
 def _get_aurora_connection() -> "psycopg2.extensions.connection":
@@ -100,7 +102,7 @@ def _get_opensearch_client() -> "OpenSearch":
 
     host = endpoint.replace("https://", "").replace("http://", "")
 
-    for attempt in range(1, MAX_CONNECTION_RETRIES + 1):
+    for attempt in range(1, OPENSEARCH_MAX_RETRIES + 1):
         try:
             client = OpenSearch(
                 hosts=[{"host": host, "port": 443}],
@@ -114,9 +116,9 @@ def _get_opensearch_client() -> "OpenSearch":
             return client
         except Exception:
             logger.warning("opensearch_connection_retry", attempt=attempt)
-            if attempt == MAX_CONNECTION_RETRIES:
-                raise RuntimeError(f"OpenSearch connection failed after {MAX_CONNECTION_RETRIES} retries")
-            time.sleep(CONNECTION_RETRY_DELAY_SECONDS)
+            if attempt == OPENSEARCH_MAX_RETRIES:
+                raise RuntimeError(f"OpenSearch connection failed after {OPENSEARCH_MAX_RETRIES} retries")
+            time.sleep(OPENSEARCH_RETRY_DELAY_SECONDS)
 
     raise RuntimeError("OpenSearch connection failed")  # pragma: no cover
 
@@ -475,6 +477,9 @@ def _run_single_database(target_db: str, record_count: int) -> None:
             result = _create_failure_result("s3vectors", record_count, str(exc))
 
     logger.info("single_db_complete", result=asdict(result))
+
+    if not result.success:
+        sys.exit(1)
 
 
 def _run_all_databases(record_count: int) -> None:
