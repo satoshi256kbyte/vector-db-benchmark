@@ -27,8 +27,8 @@ export class OpenSearchConstruct extends Construct {
         action: "UpdateAccountSettings",
         parameters: {
           capacityLimits: {
-            maxIndexingCapacityInOCU: 2,
-            maxSearchCapacityInOCU: 5,
+            maxIndexingCapacityInOCU: 10,
+            maxSearchCapacityInOCU: 10,
           },
         },
         physicalResourceId: cr.PhysicalResourceId.of("aoss-account-settings"),
@@ -38,8 +38,8 @@ export class OpenSearchConstruct extends Construct {
         action: "UpdateAccountSettings",
         parameters: {
           capacityLimits: {
-            maxIndexingCapacityInOCU: 2,
-            maxSearchCapacityInOCU: 2,
+            maxIndexingCapacityInOCU: 10,
+            maxSearchCapacityInOCU: 10,
           },
         },
         physicalResourceId: cr.PhysicalResourceId.of("aoss-account-settings"),
