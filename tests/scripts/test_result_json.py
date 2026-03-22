@@ -79,9 +79,7 @@ def _build_save_result_json_script(
     index_create_success: bool,
     ecs_task_arn: str,
     ecs_exit_code: int,
-    acu_before: int,
     acu_during: int,
-    acu_after: int,
     success: bool,
     error_message: str,
 ) -> str:
@@ -103,9 +101,7 @@ def _build_save_result_json_script(
         index_create_success: インデックス作成成功フラグ。
         ecs_task_arn: ECS タスク ARN。
         ecs_exit_code: ECS タスク終了コード。
-        acu_before: ACU 変更前値。
         acu_during: ACU ピーク値。
-        acu_after: ACU 変更後値。
         success: 成功フラグ。
         error_message: エラーメッセージ。
 
@@ -132,9 +128,7 @@ save_result_json \
     {bool_str(index_create_success)} \
     "{ecs_task_arn}" \
     {ecs_exit_code} \
-    {acu_before} \
     {acu_during} \
-    {acu_after} \
     {bool_str(success)} \
     "{error_message}"
 """
@@ -242,9 +236,7 @@ class TestProperty5IndividualResultJson:
         index_create_success=st.booleans(),
         ecs_task_arn=ecs_task_arns,
         ecs_exit_code=st.sampled_from([0, 1, 137]),
-        acu_before=st.integers(min_value=0, max_value=128),
-        acu_during=st.integers(min_value=0, max_value=128),
-        acu_after=st.integers(min_value=0, max_value=128),
+        acu_during=st.integers(min_value=0, max_value=10),
         success=st.booleans(),
     )
     @settings(max_examples=100, deadline=None)
@@ -261,9 +253,7 @@ class TestProperty5IndividualResultJson:
         index_create_success: bool,
         ecs_task_arn: str,
         ecs_exit_code: int,
-        acu_before: int,
         acu_during: int,
-        acu_after: int,
         success: bool,
     ) -> None:
         """任意の入力パラメータで個別 DB 結果 JSON が必須フィールドを全て含むこと."""
@@ -282,9 +272,7 @@ class TestProperty5IndividualResultJson:
                 index_create_success=index_create_success,
                 ecs_task_arn=ecs_task_arn,
                 ecs_exit_code=ecs_exit_code,
-                acu_before=acu_before,
                 acu_during=acu_during,
-                acu_after=acu_after,
                 success=success,
                 error_message="",
             )
@@ -326,8 +314,8 @@ class TestProperty5SummaryJson:
         record_count=st.integers(min_value=1, max_value=1_000_000),
         total_duration=st.integers(min_value=1, max_value=86400),
         fargate_total=st.integers(min_value=1, max_value=86400),
-        aurora_acu_peak=st.integers(min_value=0, max_value=128),
-        opensearch_ocu_peak=st.integers(min_value=0, max_value=50),
+        aurora_acu_peak=st.integers(min_value=0, max_value=10),
+        opensearch_ocu_peak=st.integers(min_value=0, max_value=10),
     )
     @settings(max_examples=100, deadline=None)
     def test_summary_contains_all_required_fields(
@@ -359,9 +347,7 @@ class TestProperty5SummaryJson:
                     "index_create_success": True,
                     "ecs_task_arn": "arn:aws:ecs:ap-northeast-1:123456789012:task/cluster/abc123",
                     "ecs_exit_code": 0,
-                    "acu_before": 0,
                     "acu_during": 8,
-                    "acu_after": 0,
                     "opensearch_ocu_peak": 0,
                     "index_create_duration_seconds": 0,
                     "service_cost_usd": 0.5,

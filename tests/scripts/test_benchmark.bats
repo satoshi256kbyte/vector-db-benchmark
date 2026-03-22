@@ -239,37 +239,102 @@ setup() {
 }
 
 # =============================================================================
-# テスト: Aurora ACU コスト算出
+# テスト: Aurora ACU コスト算出（時系列積分方式）
 # =============================================================================
 
-@test "calculate_aurora_acu_cost: ACU ピーク値と秒数から概算コストを算出する" {
-    # $0.12/ACU/hour * 5 ACU * (3600s / 3600) = $0.60
+@test "calculate_aurora_acu_cost: 時系列データから台形積分でコストを算出する" {
+    # 5 ACU が 1 時間（3600秒）一定 → 5 ACU·h × $0.12 = $0.60
+    local tmpfile
+    tmpfile=$(mktemp)
+    cat > "$tmpfile" <<'EOF'
+{
+    "timestamps": ["2025-01-01T00:00:00Z", "2025-01-01T01:00:00Z"],
+    "values": [5, 5],
+    "peak": 5,
+    "period_seconds": 60
+}
+EOF
     local result
-    result=$(calculate_aurora_acu_cost 5 3600)
-    # bc の出力は .6000 のようになる場合がある
+    result=$(calculate_aurora_acu_cost "$tmpfile")
+    rm -f "$tmpfile"
+    # 5 * 1h * 0.12 = 0.6000
     [[ "$result" == *"6000"* ]] || [[ "$result" == *".60"* ]]
 }
 
-@test "calculate_aurora_acu_cost: ACU 0 の場合コスト 0" {
+@test "calculate_aurora_acu_cost: ファイルが存在しない場合コスト 0" {
     local result
-    result=$(calculate_aurora_acu_cost 0 3600)
+    result=$(calculate_aurora_acu_cost "/nonexistent/path.json")
+    [ "$result" = "0" ]
+}
+
+@test "calculate_aurora_acu_cost: データポイントが1つの場合コスト 0" {
+    local tmpfile
+    tmpfile=$(mktemp)
+    cat > "$tmpfile" <<'EOF'
+{
+    "timestamps": ["2025-01-01T00:00:00Z"],
+    "values": [5],
+    "peak": 5,
+    "period_seconds": 60
+}
+EOF
+    local result
+    result=$(calculate_aurora_acu_cost "$tmpfile")
+    rm -f "$tmpfile"
     [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
 }
 
 # =============================================================================
-# テスト: OpenSearch OCU コスト算出
+# テスト: OpenSearch OCU コスト算出（時系列積分方式）
 # =============================================================================
 
-@test "calculate_opensearch_ocu_cost: OCU ピーク値と秒数から概算コストを算出する" {
-    # $0.24/OCU/hour * 2 OCU * (3600s / 3600) = $0.48
+@test "calculate_opensearch_ocu_cost: 時系列データから台形積分でコストを算出する" {
+    # indexing: 2 OCU × 1h, search: 2 OCU × 1h → 合計 4 OCU·h × $0.24 = $0.96
+    local tmpfile
+    tmpfile=$(mktemp)
+    cat > "$tmpfile" <<'EOF'
+{
+    "indexing_ocu": {
+        "timestamps": ["2025-01-01T00:00:00Z", "2025-01-01T01:00:00Z"],
+        "values": [2, 2]
+    },
+    "search_ocu": {
+        "timestamps": ["2025-01-01T00:00:00Z", "2025-01-01T01:00:00Z"],
+        "values": [2, 2]
+    }
+}
+EOF
     local result
-    result=$(calculate_opensearch_ocu_cost 2 3600)
-    [[ "$result" == *"4800"* ]] || [[ "$result" == *".48"* ]]
+    result=$(calculate_opensearch_ocu_cost "$tmpfile")
+    rm -f "$tmpfile"
+    # (2+2) OCU * 1h * 0.24 = 0.9600
+    [[ "$result" == *"9600"* ]] || [[ "$result" == *".96"* ]]
 }
 
-@test "calculate_opensearch_ocu_cost: OCU 0 の場合コスト 0" {
+@test "calculate_opensearch_ocu_cost: ファイルが存在しない場合コスト 0" {
     local result
-    result=$(calculate_opensearch_ocu_cost 0 3600)
+    result=$(calculate_opensearch_ocu_cost "/nonexistent/path.json")
+    [ "$result" = "0" ]
+}
+
+@test "calculate_opensearch_ocu_cost: データポイントが1つの場合コスト 0" {
+    local tmpfile
+    tmpfile=$(mktemp)
+    cat > "$tmpfile" <<'EOF'
+{
+    "indexing_ocu": {
+        "timestamps": ["2025-01-01T00:00:00Z"],
+        "values": [2]
+    },
+    "search_ocu": {
+        "timestamps": ["2025-01-01T00:00:00Z"],
+        "values": [2]
+    }
+}
+EOF
+    local result
+    result=$(calculate_opensearch_ocu_cost "$tmpfile")
+    rm -f "$tmpfile"
     [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
 }
 

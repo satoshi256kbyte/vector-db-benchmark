@@ -635,24 +635,95 @@ calculate_fargate_cost() {
     echo "scale=4; $vcpu_cost + $memory_cost" | bc
 }
 
-# Aurora Serverless v2 ACU 概算コストを算出する（ap-northeast-1 料金）
+# Aurora Serverless v2 ACU 概算コストを時系列データから算出する（ap-northeast-1 料金）
 # ACU 単価: $0.12/ACU/時間
+# 時系列 JSON ファイルから台形積分で ACU·秒 を算出し、ACU·時間に変換して単価を乗算する
+# 引数:
+#   $1 - timeseries_file: collect_aurora_metrics が保存した時系列 JSON ファイルパス
+# フォールバック: ファイルが存在しない場合やデータポイントが不足する場合は 0 を返す
 calculate_aurora_acu_cost() {
-    local acu_peak="$1"
-    local duration_seconds="$2"
-    local hours
-    hours=$(echo "scale=6; $duration_seconds / 3600" | bc)
-    echo "scale=4; $hours * $acu_peak * 0.12" | bc
+    local timeseries_file="$1"
+
+    if [[ ! -f "$timeseries_file" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    # jq で台形積分を計算: timestamps と values を ISO8601 → epoch 変換し、
+    # 隣接データポイント間の (t[i+1]-t[i]) * (v[i]+v[i+1]) / 2 を合算
+    local acu_seconds
+    acu_seconds=$(jq -r '
+        def to_epoch: sub("\\.[0-9]+"; "") | fromdateiso8601;
+        .timestamps as $ts | .values as $vs |
+        if ($ts | length) < 2 then 0
+        else
+            [range(0; ($ts | length) - 1) |
+                . as $i |
+                (($ts[$i + 1] | to_epoch) - ($ts[$i] | to_epoch)) * (($vs[$i] + $vs[$i + 1]) / 2)
+            ] | add // 0
+        end
+    ' "$timeseries_file" 2>/dev/null) || { echo "0"; return 0; }
+
+    if [[ -z "$acu_seconds" || "$acu_seconds" == "null" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    # ACU·秒 → ACU·時間 → コスト（USD）
+    echo "scale=4; ($acu_seconds / 3600) * 0.12" | bc
 }
 
-# OpenSearch Serverless OCU 概算コストを算出する（ap-northeast-1 料金）
+# OpenSearch Serverless OCU 概算コストを時系列データから算出する（ap-northeast-1 料金）
 # OCU 単価: $0.24/OCU/時間
+# Indexing OCU と Search OCU を個別に台形積分し合算する
+# 引数:
+#   $1 - timeseries_file: collect_opensearch_metrics が保存した時系列 JSON ファイルパス
+# フォールバック: ファイルが存在しない場合やデータポイントが不足する場合は 0 を返す
 calculate_opensearch_ocu_cost() {
-    local ocu_peak="$1"
-    local duration_seconds="$2"
-    local hours
-    hours=$(echo "scale=6; $duration_seconds / 3600" | bc)
-    echo "scale=4; $hours * $ocu_peak * 0.24" | bc
+    local timeseries_file="$1"
+
+    if [[ ! -f "$timeseries_file" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    # Indexing OCU の台形積分
+    local indexing_ocu_seconds
+    indexing_ocu_seconds=$(jq -r '
+        def to_epoch: sub("\\.[0-9]+"; "") | fromdateiso8601;
+        .indexing_ocu.timestamps as $ts | .indexing_ocu.values as $vs |
+        if ($ts | length) < 2 then 0
+        else
+            [range(0; ($ts | length) - 1) |
+                . as $i |
+                (($ts[$i + 1] | to_epoch) - ($ts[$i] | to_epoch)) * (($vs[$i] + $vs[$i + 1]) / 2)
+            ] | add // 0
+        end
+    ' "$timeseries_file" 2>/dev/null) || { indexing_ocu_seconds="0"; }
+
+    # Search OCU の台形積分
+    local search_ocu_seconds
+    search_ocu_seconds=$(jq -r '
+        def to_epoch: sub("\\.[0-9]+"; "") | fromdateiso8601;
+        .search_ocu.timestamps as $ts | .search_ocu.values as $vs |
+        if ($ts | length) < 2 then 0
+        else
+            [range(0; ($ts | length) - 1) |
+                . as $i |
+                (($ts[$i + 1] | to_epoch) - ($ts[$i] | to_epoch)) * (($vs[$i] + $vs[$i + 1]) / 2)
+            ] | add // 0
+        end
+    ' "$timeseries_file" 2>/dev/null) || { search_ocu_seconds="0"; }
+
+    if [[ -z "$indexing_ocu_seconds" || "$indexing_ocu_seconds" == "null" ]]; then
+        indexing_ocu_seconds="0"
+    fi
+    if [[ -z "$search_ocu_seconds" || "$search_ocu_seconds" == "null" ]]; then
+        search_ocu_seconds="0"
+    fi
+
+    # 合計 OCU·秒 → OCU·時間 → コスト（USD）
+    echo "scale=4; (($indexing_ocu_seconds + $search_ocu_seconds) / 3600) * 0.24" | bc
 }
 
 # S3 Vectors 概算コストを算出する（ap-northeast-1 料金）
@@ -702,15 +773,13 @@ create_result_dir() {
 #   $9  - index_create_success: インデックス作成成功フラグ（true/false）
 #   $10 - ecs_task_arn: ECS タスク ARN
 #   $11 - ecs_exit_code: ECS タスク終了コード
-#   $12 - acu_before: ACU 変更前値
-#   $13 - acu_during: ACU ピーク値
-#   $14 - acu_after: ACU 変更後値
-#   $15 - success: 成功フラグ（true/false）
-#   $16 - error_message: エラーメッセージ（なければ null）
-#   $17 - fargate_cost_usd: Fargate 概算コスト（USD）
-#   $18 - opensearch_ocu_peak: OpenSearch OCU ピーク値
-#   $19 - index_create_duration_seconds: インデックス作成時間（秒、Aurora のみ）
-#   $20 - service_cost_usd: サービス概算コスト（Aurora ACU / OpenSearch OCU）
+#   $12 - acu_during: ACU ピーク値
+#   $13 - success: 成功フラグ（true/false）
+#   $14 - error_message: エラーメッセージ（なければ null）
+#   $15 - fargate_cost_usd: Fargate 概算コスト（USD）
+#   $16 - opensearch_ocu_peak: OpenSearch OCU ピーク値
+#   $17 - index_create_duration_seconds: インデックス作成時間（秒、Aurora のみ）
+#   $18 - service_cost_usd: サービス概算コスト（Aurora ACU / OpenSearch OCU）
 save_result_json() {
     local database="$1"
     local record_count="$2"
@@ -723,15 +792,13 @@ save_result_json() {
     local index_create_success="$9"
     local ecs_task_arn="${10}"
     local ecs_exit_code="${11}"
-    local acu_before="${12}"
-    local acu_during="${13}"
-    local acu_after="${14}"
-    local success="${15}"
-    local error_message="${16}"
-    local fargate_cost_usd="${17:-0}"
-    local opensearch_ocu_peak="${18:-0}"
-    local index_create_duration_seconds="${19:-0}"
-    local service_cost_usd="${20:-0}"
+    local acu_during="${12}"
+    local success="${13}"
+    local error_message="${14}"
+    local fargate_cost_usd="${15:-0}"
+    local opensearch_ocu_peak="${16:-0}"
+    local index_create_duration_seconds="${17:-0}"
+    local service_cost_usd="${18:-0}"
 
     # スループット算出（duration_seconds が 0 の場合は 0）
     local throughput="0"
@@ -764,9 +831,7 @@ save_result_json() {
         --argjson index_create_success "$index_create_success" \
         --arg ecs_task_arn "$ecs_task_arn" \
         --argjson ecs_exit_code "$ecs_exit_code" \
-        --argjson acu_before "$acu_before" \
         --argjson acu_during "$acu_during" \
-        --argjson acu_after "$acu_after" \
         --argjson success "$success" \
         --arg error_message "$error_message" \
         --argjson fargate_cost_usd "$fargate_cost_usd" \
@@ -786,9 +851,7 @@ save_result_json() {
             index_create_success: $index_create_success,
             ecs_task_arn: $ecs_task_arn,
             ecs_exit_code: $ecs_exit_code,
-            acu_before: $acu_before,
             acu_during: $acu_during,
-            acu_after: $acu_after,
             fargate_cost_usd: $fargate_cost_usd,
             opensearch_ocu_peak: $opensearch_ocu_peak,
             index_create_duration_seconds: $index_create_duration_seconds,
@@ -991,9 +1054,7 @@ run_benchmark_cycle() {
     local cycle_error=""
     local pre_count=0
     local post_count=0
-    local acu_before=0
     local acu_during=0
-    local acu_after=0
     local index_drop_success="false"
     local index_create_success="false"
     local duration_seconds=0
@@ -1025,7 +1086,7 @@ run_benchmark_cycle() {
                 log_error "$cycle_error"
                 save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
                     "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+                    "" "0" "$acu_during" "$cycle_success" "$cycle_error"
                 return 0
             fi
             ;;
@@ -1042,7 +1103,7 @@ run_benchmark_cycle() {
         log_error "$cycle_error"
         save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
             "${START_TIME:-}" "${END_TIME:-}" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-            "${TASK_ARN:-}" "${EXIT_CODE:-1}" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+            "${TASK_ARN:-}" "${EXIT_CODE:-1}" "$acu_during" "$cycle_success" "$cycle_error"
         return 0
     fi
 
@@ -1118,11 +1179,11 @@ run_benchmark_cycle() {
     service_cost="0"
     case "$target_db" in
         aurora)
-            service_cost=$(calculate_aurora_acu_cost "$acu_during" "$duration_seconds")
+            service_cost=$(calculate_aurora_acu_cost "${RESULT_DIR}/aurora-acu-timeseries.json")
             log_info "${db_label} Aurora ACU 概算コスト: \$${service_cost}"
             ;;
         opensearch)
-            service_cost=$(calculate_opensearch_ocu_cost "$opensearch_ocu_peak_local" "$duration_seconds")
+            service_cost=$(calculate_opensearch_ocu_cost "${RESULT_DIR}/opensearch-ocu-timeseries.json")
             log_info "${db_label} OpenSearch OCU 概算コスト: \$${service_cost}"
             ;;
         s3vectors)
@@ -1135,7 +1196,7 @@ run_benchmark_cycle() {
     log_info "${db_label} 結果サマリー: 投入前=${pre_count}, 投入後=${post_count}, 処理時間=${duration_seconds}秒, サービスコスト=\$${service_cost}"
     save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
         "$START_TIME" "$END_TIME" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-        "$TASK_ARN" "$EXIT_CODE" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error" \
+        "$TASK_ARN" "$EXIT_CODE" "$acu_during" "$cycle_success" "$cycle_error" \
         "$fargate_cost" "$opensearch_ocu_peak_local" "$index_create_duration_seconds" "$service_cost"
 
     log_info "===== ${db_label} ベンチマークサイクル完了 ====="

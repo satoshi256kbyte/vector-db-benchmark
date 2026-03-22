@@ -10,7 +10,7 @@ ACU/OCU は CDK 側で固定値として設定済み（ACU: 最小0/最大10、O
 ### 設計方針
 
 - シェルスクリプトはローカル PC 上で実行し、AWS CLI で全 AWS リソースを操作する
-- ECS タスクの役割はデータ投入のみに限定し、Aurora のインデックス操作はシェルスクリプト側で制御する
+- ECS タスクの役割はデータ投入のみに限定し、Aurora のインデックス操作はシェルスクリプトから ECS タスクの `TASK_MODE` 環境変数を使用して制御する
 - 既存の ECS タスク（`main.py`）に `TARGET_DB` 環境変数を追加し、単一 DB 指定モードをサポートする
 - OpenSearch は既存インデックスに Bulk API で一括投入するのみ（インデックス削除・作成は行わない）
 - 1回の実行で Aurora → OpenSearch → S3 Vectors の順に3つの DB 全てのベンチマークサイクルを自動完了する
@@ -47,8 +47,7 @@ graph TB
 
     Script -->|"aws ecs run-task<br/>(TARGET_DB, RECORD_COUNT)"| ECS
     Script -->|"aws ecs wait tasks-stopped"| ECS
-    Script -->|"psql (via Secrets Manager)"| Aurora
-    Script -->|"aws s3vectors list-vectors"| S3V
+    Script -->|"ECS タスク経由<br/>(TASK_MODE=count/index_drop/index_create/ingest)"| ECS
     Script -->|"aws logs get-log-events"| CW
     Script -->|"aws cloudwatch get-metric-data"| CW
     Script -->|"aws secretsmanager<br/>get-secret-value"| SM
@@ -66,7 +65,7 @@ graph TB
 flowchart TD
     Start([DB処理開始]) --> PreCount[投入前レコード数記録]
     PreCount --> DropIndex{インデックス削除が必要?}
-    DropIndex -->|Aurora| DropAurora[インデックス削除<br/>psql で DROP INDEX + TRUNCATE]
+    DropIndex -->|Aurora| DropAurora[インデックス削除<br/>ECS タスク経由で DROP INDEX + TRUNCATE]
     DropIndex -->|OpenSearch/S3 Vectors| SkipDrop[スキップ]
     DropAurora --> RecordStart[開始時刻記録]
     SkipDrop --> RecordStart
@@ -74,7 +73,7 @@ flowchart TD
     RunECS --> WaitECS[ECS タスク完了待機<br/>aws ecs wait tasks-stopped]
     WaitECS --> RecordEnd[終了時刻記録]
     RecordEnd --> CreateIndex{インデックス作成が必要?}
-    CreateIndex -->|Aurora| CreateAurora[インデックス作成<br/>psql で CREATE INDEX]
+    CreateIndex -->|Aurora| CreateAurora[インデックス作成<br/>ECS タスク経由で CREATE INDEX]
     CreateIndex -->|OpenSearch/S3 Vectors| SkipCreate[スキップ]
     CreateAurora --> PostCount[投入後レコード数記録]
     SkipCreate --> PostCount
@@ -141,8 +140,8 @@ def main() -> None:
 スクリプト実行開始時に以下を確認する:
 
 - `aws` CLI コマンドの存在
-- `psql` コマンドの存在
 - `jq` コマンドの存在
+- `bc` コマンドの存在
 - AWS 認証情報の有効性（`aws sts get-caller-identity`）
 
 #### コマンドライン引数
@@ -157,6 +156,11 @@ Options:
   --s3vectors-bucket NAME       S3 Vectors バケット名 (デフォルト: vdbbench-dev-s3vectors-benchmark)
   --ecs-cluster NAME            ECS クラスター名 (デフォルト: vdbbench-dev-ecs-benchmark)
   --region REGION               AWS リージョン (デフォルト: ap-northeast-1)
+  --ecs-log-group NAME          ECS タスクの CloudWatch Logs ロググループ名
+  --aurora-secret-arn ARN       Aurora Secrets Manager シークレット ARN
+  --task-definition ARN         ECS タスク定義 ARN
+  --subnet-ids IDS              Fargate サブネット ID（カンマ区切り）
+  --security-group-id ID        Fargate セキュリティグループ ID
   --help                        ヘルプ表示
 ```
 
@@ -165,55 +169,72 @@ Options:
 | 関数名 | 責務 |
 | --- | --- |
 | `main` | 全体フロー制御、結果ディレクトリ作成、サマリー生成 |
-| `check_prerequisites` | 前提条件チェック（aws, psql, jq, 認証情報） |
+| `check_prerequisites` | 前提条件チェック（aws, jq, bc, 認証情報） |
 | `parse_args` | コマンドライン引数パース |
 | `run_benchmark_cycle` | 1つの DB に対するベンチマークサイクル全体 |
-| `drop_aurora_index` / `create_aurora_index` | Aurora インデックス操作（psql 経由） |
-| `get_aurora_credentials` | Secrets Manager から Aurora 認証情報取得 |
-| `run_ecs_task` | ECS タスク起動・待機 |
-| `get_record_count` | 各 DB のレコード数取得 |
+| `drop_aurora_index` / `create_aurora_index` | Aurora インデックス操作（ECS タスク経由） |
+| `run_ecs_task_with_mode` | ECS タスクをモード指定で起動・待機（インデックス操作・レコード数取得用） |
+| `run_ecs_task` | ECS データ投入タスク起動・待機 |
+| `get_record_count` | 各 DB のレコード数取得（ECS タスク経由） |
 | `collect_task_logs` | CloudWatch Logs からログ収集 |
-| `collect_aurora_metrics` | Aurora ACU メトリクス取得 |
+| `collect_aurora_metrics` | Aurora ACU メトリクス取得（時系列データ保存） |
+| `collect_opensearch_metrics` | OpenSearch OCU メトリクス取得（時系列データ保存） |
 | `calculate_fargate_cost` | Fargate 概算コスト算出 |
-| `save_result_json` | 個別 DB 結果 JSON 保存 |
+| `calculate_aurora_acu_cost` | Aurora ACU 概算コスト算出（時系列積分） |
+| `calculate_opensearch_ocu_cost` | OpenSearch OCU 概算コスト算出（時系列積分） |
+| `calculate_s3vectors_cost` | S3 Vectors PUT バイトコスト算出 |
+| `save_result_json` | 個別 DB 結果 JSON 保存（18 引数） |
 | `generate_summary` | 全 DB 統合サマリー生成 |
 | `cleanup` | trap 用クリーンアップ |
 | `log_info` / `log_error` / `log_separator` | ログ出力ユーティリティ |
 
-#### Aurora インデックス操作（psql 経由）
+#### Aurora インデックス操作（ECS タスク経由）
+
+Aurora はプライベートサブネット内にあるため、ローカル PC から直接 psql 接続できない。
+そのため、インデックス操作は ECS タスクの `TASK_MODE` 環境変数を使用して実行する。
 
 ```bash
-# Secrets Manager から認証情報取得
-get_aurora_credentials() {
-    local secret_json
-    secret_json=$(aws secretsmanager get-secret-value \
-        --secret-id "$AURORA_SECRET_ARN" \
-        --query 'SecretString' --output text \
-        --region "$REGION")
-    AURORA_HOST=$(echo "$secret_json" | jq -r '.host')
-    AURORA_PORT=$(echo "$secret_json" | jq -r '.port // 5432')
-    AURORA_USER=$(echo "$secret_json" | jq -r '.username')
-    AURORA_PASSWORD=$(echo "$secret_json" | jq -r '.password')
-    AURORA_DBNAME=$(echo "$secret_json" | jq -r '.dbname // "postgres"')
-}
-
-# インデックス削除 + TRUNCATE
+# インデックス削除 + TRUNCATE（ECS タスク経由）
 drop_aurora_index() {
-    PGPASSWORD="$AURORA_PASSWORD" psql \
-        -h "$AURORA_HOST" -p "$AURORA_PORT" \
-        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
-        -c "DROP INDEX IF EXISTS embeddings_hnsw_idx;" \
-        -c "TRUNCATE TABLE embeddings;"
+    log_info "Aurora インデックス削除を開始します（ECS タスク経由）..."
+    run_ecs_task_with_mode "aurora" "index_drop"
 }
 
-# インデックス再作成
+# インデックス再作成（ECS タスク経由）
 create_aurora_index() {
-    PGPASSWORD="$AURORA_PASSWORD" psql \
-        -h "$AURORA_HOST" -p "$AURORA_PORT" \
-        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
-        -c "CREATE INDEX embeddings_hnsw_idx ON embeddings \
-            USING hnsw (embedding vector_cosine_ops) \
-            WITH (m = 16, ef_construction = 64);"
+    log_info "Aurora HNSW インデックス作成を開始します（ECS タスク経由）..."
+    run_ecs_task_with_mode "aurora" "index_create"
+}
+
+# ECS タスクをモード指定で起動し完了を待機する汎用関数
+run_ecs_task_with_mode() {
+    local target_db="$1"
+    local task_mode="$2"
+
+    task_arn=$(aws ecs run-task \
+        --cluster "$ECS_CLUSTER" \
+        --task-definition "$TASK_DEFINITION" \
+        --launch-type FARGATE \
+        --network-configuration "..." \
+        --overrides '{
+            "containerOverrides": [{
+                "name": "BulkIngestContainer",
+                "environment": [
+                    {"name": "TARGET_DB", "value": "'"$target_db"'"},
+                    {"name": "TASK_MODE", "value": "'"$task_mode"'"}
+                ]
+            }]
+        }' \
+        --query 'tasks[0].taskArn' --output text \
+        --region "$REGION")
+
+    aws ecs wait tasks-stopped \
+        --cluster "$ECS_CLUSTER" \
+        --tasks "$task_arn" \
+        --region "$REGION"
+
+    # 終了コード確認
+    # ...
 }
 ```
 
@@ -236,6 +257,7 @@ run_ecs_task() {
                 "name": "BulkIngestContainer",
                 "environment": [
                     {"name": "TARGET_DB", "value": "'"$target_db"'"},
+                    {"name": "TASK_MODE", "value": "ingest"},
                     {"name": "RECORD_COUNT", "value": "'"$record_count"'"}
                 ]
             }]
@@ -259,34 +281,28 @@ run_ecs_task() {
 }
 ```
 
-#### レコード数取得
+#### レコード数取得（ECS タスク経由）
+
+Aurora はプライベートサブネット内にあるため、レコード数取得も ECS タスク経由で行う。
+OpenSearch も VPC 制限のため同様。S3 Vectors も統一的に ECS タスク経由で取得する。
 
 ```bash
-# Aurora: psql 経由
-get_aurora_record_count() {
-    PGPASSWORD="$AURORA_PASSWORD" psql \
-        -h "$AURORA_HOST" -p "$AURORA_PORT" \
-        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
-        -t -A -c "SELECT COUNT(*) FROM embeddings;"
-}
+# 指定 DB のレコード数を ECS タスク経由で取得する
+# 結果はグローバル変数 ECS_COUNT_RESULT に設定される
+get_record_count() {
+    local target_db="$1"
+    log_info "${target_db} のレコード数を取得中（ECS タスク経由）..."
 
-# OpenSearch: ECS タスクログから取得（VPC 制限のため直接アクセス不可）
-# 設計判断: ECS タスクのログ出力（ingest_all_complete の total_inserted）から取得する
-get_opensearch_record_count() {
-    # ECS タスクログから total_inserted を抽出
-    # または、投入後は RECORD_COUNT と見なす
-    echo "$RECORD_COUNT"
-}
-
-# S3 Vectors: AWS CLI 経由
-get_s3vectors_record_count() {
-    aws s3vectors list-vectors \
-        --vector-bucket-name "$S3VECTORS_BUCKET" \
-        --index-name "embeddings" \
-        --query 'vectors | length(@)' --output text \
-        --region "$REGION" 2>/dev/null || echo "0"
+    if run_ecs_task_with_mode "$target_db" "count"; then
+        echo "$ECS_COUNT_RESULT"
+    else
+        log_error "${target_db} のレコード数取得に失敗しました"
+        echo "0"
+    fi
 }
 ```
+
+ECS タスクは `TASK_MODE=count` で起動され、CloudWatch Logs に `RECORD_COUNT_RESULT:N` 形式でレコード数を出力する。シェルスクリプトはログからこの値を抽出する。
 
 #### クリーンアップ処理
 
@@ -320,6 +336,11 @@ trap cleanup EXIT
   "index_create_success": true,
   "ecs_task_arn": "arn:aws:ecs:ap-northeast-1:123456789012:task/vdbbench-dev-ecs-benchmark/abc123",
   "ecs_exit_code": 0,
+  "acu_during": 5.0,
+  "fargate_cost_usd": 0.02,
+  "opensearch_ocu_peak": 0,
+  "index_create_duration_seconds": 45,
+  "service_cost_usd": 0.35,
   "success": true,
   "error_message": null
 }
@@ -339,6 +360,8 @@ trap cleanup EXIT
       "throughput_records_per_sec": 303.03,
       "pre_count": 0,
       "post_count": 100000,
+      "index_create_duration_seconds": 45,
+      "service_cost_usd": 0.35,
       "success": true
     },
     "opensearch": {
@@ -346,6 +369,8 @@ trap cleanup EXIT
       "throughput_records_per_sec": 222.22,
       "pre_count": 0,
       "post_count": 100000,
+      "opensearch_ocu_peak": 4.0,
+      "service_cost_usd": 0.72,
       "success": true
     },
     "s3vectors": {
@@ -353,12 +378,16 @@ trap cleanup EXIT
       "throughput_records_per_sec": 500.00,
       "pre_count": 0,
       "post_count": 100000,
+      "service_cost_usd": 0.14,
       "success": true
     }
   },
   "cost_summary": {
-    "aurora_acu_current": 0,
-    "opensearch_ocu_current": 10,
+    "aurora_acu_peak": 5.0,
+    "aurora_acu_cost_usd": 0.35,
+    "opensearch_ocu_peak": 4.0,
+    "opensearch_ocu_cost_usd": 0.72,
+    "s3vectors_cost_usd": 0.14,
     "fargate_total_seconds": 980,
     "fargate_vcpu": 2,
     "fargate_memory_gb": 4,
@@ -385,6 +414,36 @@ calculate_fargate_cost() {
     local memory_cost
     memory_cost=$(echo "scale=6; $hours * $memory_gb * 0.00553" | bc)
     echo "scale=4; $vcpu_cost + $memory_cost" | bc
+}
+
+# Aurora ACU コスト概算（ap-northeast-1 料金）
+# 時系列データから台形積分で算出する
+# ACU 単価: $0.12/ACU/時間
+# 入力: 時系列 JSON ファイルパス（collect_aurora_metrics が保存したもの）
+# 算出方法: 各データポイント間の ACU 値を台形近似で積分し、
+#           合計 ACU·秒 を ACU·時間に変換して単価を乗算する
+calculate_aurora_acu_cost() {
+    local timeseries_file="$1"
+    # jq で timestamps/values 配列から台形積分を計算
+    ...
+}
+
+# OpenSearch OCU コスト概算（ap-northeast-1 料金）
+# 時系列データから台形積分で算出する
+# OCU 単価: $0.24/OCU/時間
+# Indexing OCU と Search OCU を個別に積分し合算する
+calculate_opensearch_ocu_cost() {
+    local timeseries_file="$1"
+    # jq で indexing_ocu/search_ocu の timestamps/values から台形積分を計算
+    ...
+}
+
+# S3 Vectors コスト概算（ap-northeast-1 料金）
+# Put bytes: $0.219/GB
+# 1レコード = 1536次元 × 4バイト(float32) + メタデータ ≈ 6656バイト
+calculate_s3vectors_cost() {
+    local record_count="$1"
+    ...
 }
 ```
 
@@ -460,10 +519,9 @@ results/
 
 | エラー種別 | 対処方法 | 動作 |
 | --- | --- | --- |
-| 前提条件不足（aws/psql/jq 未インストール） | スクリプト開始時にチェック | エラーメッセージ出力、終了コード 1 |
+| 前提条件不足（aws/jq/bc 未インストール） | スクリプト開始時にチェック | エラーメッセージ出力、終了コード 1 |
 | AWS 認証情報無効 | `aws sts get-caller-identity` で確認 | エラーメッセージ出力、終了コード 1 |
-| Aurora 接続失敗（psql） | エラーメッセージ出力 | 該当 DB の処理を中断、次の DB へ |
-| インデックス操作失敗 | エラーメッセージ出力 | 該当 DB の処理を中断、次の DB へ |
+| インデックス操作失敗（ECS タスク経由） | エラーメッセージ出力 | 該当 DB の処理を中断、次の DB へ |
 | ECS タスク起動失敗 | エラーメッセージ出力 | 該当 DB の処理を中断、次の DB へ |
 | ECS タスク異常終了 | 終了コード・理由をログ記録 | 該当 DB を失敗として記録、次の DB へ |
 | CloudWatch Logs 取得失敗 | 警告メッセージ出力 | ログファイルなしで続行 |

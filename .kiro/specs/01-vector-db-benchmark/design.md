@@ -120,7 +120,7 @@ class AuroraConstruct extends Construct {
 ```
 
 - エンジン: PostgreSQL 16.x (Aurora Serverless v2)
-- ACU: Min 0.5 / Max 16.0
+- ACU: Min 0 / Max 10
 - 認証: Secrets Manager自動生成
 - 削除ポリシー: DESTROY、スナップショットスキップ
 

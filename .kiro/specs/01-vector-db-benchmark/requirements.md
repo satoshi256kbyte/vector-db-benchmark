@@ -53,7 +53,7 @@ AWS環境において、Aurora Serverless v2 (pgvector)、OpenSearch Serverless 
 #### 受け入れ基準
 
 1. THE CDKスタック SHALL PostgreSQLエンジンのAurora Serverless v2クラスターをプライベートサブネットに作成する
-2. THE CDKスタック SHALL AuroraクラスターのMin ACUを0.5、Max ACUを16.0に設定する
+2. THE CDKスタック SHALL AuroraクラスターのMin ACUを0.0、Max ACUを10.0に設定する
 3. THE CDKスタック SHALL Auroraクラスターの削除ポリシーをDESTROYに設定し、最終スナップショットの作成をスキップする
 4. THE CDKスタック SHALL Auroraクラスターへのアクセスを動作確認Lambdaのセキュリティグループからのみ許可する
 5. WHEN 動作確認LambdaがAuroraクラスターに初回接続した際、THE 動作確認Lambda SHALL pgvector拡張を有効化しベクトル格納用テーブルおよびHNSWインデックスを作成する
@@ -132,7 +132,7 @@ AWS環境において、Aurora Serverless v2 (pgvector)、OpenSearch Serverless 
 
 1. THE CDKスタック SHALL cdk-nagによるセキュリティチェックに合格する構成を生成する
 2. THE CDKスタック SHALL すべてのデータベース通信をVPC内のプライベート経路に限定する
-3. THE CDKスタック SHALL Aurora Serverless v2のMax ACUを16.0以下に制限する
+3. THE CDKスタック SHALL Aurora Serverless v2のMax ACUを10.0以下に制限する
 4. THE CDKスタック SHALL OpenSearch ServerlessのMax OCUを8以下に制限する
 5. THE CDKスタック SHALL NAT Gatewayを使用せずVPCエンドポイント経由でAWSサービスにアクセスする構成とする
 6. THE 動作確認Lambda SHALL Amazon Bedrock等の外部APIを呼び出さずダミーベクトル生成によりAPI費用を発生させない構成とする
