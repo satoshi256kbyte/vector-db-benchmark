@@ -50,12 +50,18 @@ export class BulkIngestConstruct extends Construct {
       {
         memoryLimitMiB: 4096,
         cpu: 2048,
+        runtimePlatform: {
+          cpuArchitecture: ecs.CpuArchitecture.X86_64,
+          operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+        },
       },
     );
 
     // Container
     this.container = this.taskDefinition.addContainer("BulkIngestContainer", {
-      image: ecs.ContainerImage.fromAsset("ecs/bulk-ingest"),
+      image: ecs.ContainerImage.fromAsset("ecs/bulk-ingest", {
+        platform: cdk.aws_ecr_assets.Platform.LINUX_AMD64,
+      }),
       logging: ecs.LogDrivers.awsLogs({
         logGroup,
         streamPrefix: "bulk-ingest",

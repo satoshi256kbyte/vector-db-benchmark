@@ -71,7 +71,9 @@ class AuroraIndexManager:
 class OpenSearchIndexManager:
     """OpenSearch Serverless のインデックス管理.
 
-    HNSWマッピング付きインデックスの削除・再作成を行う。
+    OpenSearch Serverless ではインデックスの削除→再作成による性能メリットがないため、
+    すべての操作は no-op（ログ出力のみ）となる。
+    データ投入は Bulk API で既存インデックスに直接挿入する。
     """
 
     def __init__(self, client: OpenSearch) -> None:
@@ -83,42 +85,14 @@ class OpenSearchIndexManager:
         self._client = client
 
     def drop_index(self) -> None:
-        """OpenSearch インデックスを削除する（存在しない場合は無視）."""
+        """No-op: OpenSearch Serverless ではインデックス削除→再作成の効果がない."""
         log = logger.bind(database="opensearch")
-        log.info("dropping_index", index_name=INDEX_NAME)
-        self._client.indices.delete(index=INDEX_NAME, ignore=[404])
-        log.info("drop_index_complete", index_name=INDEX_NAME)
+        log.info("drop_index_noop", reason="OpenSearch Serverless does not benefit from index drop/recreate")
 
     def create_index(self) -> None:
-        """HNSWマッピング付きで OpenSearch インデックスを再作成する."""
+        """No-op: OpenSearch Serverless ではインデックス削除→再作成の効果がない."""
         log = logger.bind(database="opensearch")
-        log.info("creating_index", index_name=INDEX_NAME)
-        body = {
-            "settings": {
-                "index": {
-                    "knn": True,
-                    "knn.algo_param.ef_search": 100,
-                },
-            },
-            "mappings": {
-                "properties": {
-                    "id": {"type": "integer"},
-                    "content": {"type": "text"},
-                    "embedding": {
-                        "type": "knn_vector",
-                        "dimension": VECTOR_DIMENSION,
-                        "method": {
-                            "name": "hnsw",
-                            "space_type": "cosinesimil",
-                            "engine": "faiss",
-                            "parameters": {"m": 16, "ef_construction": 64},
-                        },
-                    },
-                },
-            },
-        }
-        self._client.indices.create(index=INDEX_NAME, body=body)
-        log.info("create_index_complete", index_name=INDEX_NAME)
+        log.info("create_index_noop", reason="OpenSearch Serverless does not benefit from index drop/recreate")
 
 
 class S3VectorsIndexManager:

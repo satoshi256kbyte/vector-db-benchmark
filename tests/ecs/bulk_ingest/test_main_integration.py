@@ -31,7 +31,6 @@ class TestTargetDBAllBackwardCompatibility:
         mock_s3v_client = MagicMock()
 
         mock_aurora_im = MagicMock()
-        mock_os_im = MagicMock()
         mock_s3v_im = MagicMock()
 
         mock_aurora_ing = MagicMock()
@@ -55,7 +54,6 @@ class TestTargetDBAllBackwardCompatibility:
             patch("main._get_opensearch_client", return_value=mock_os_client),
             patch("main._get_s3vectors_client", return_value=mock_s3v_client),
             patch("main.AuroraIndexManager", return_value=mock_aurora_im),
-            patch("main.OpenSearchIndexManager", return_value=mock_os_im),
             patch("main.S3VectorsIndexManager", return_value=mock_s3v_im),
             patch("main.AuroraIngester", return_value=mock_aurora_ing),
             patch("main.OpenSearchIngester", return_value=mock_os_ing),
@@ -68,11 +66,14 @@ class TestTargetDBAllBackwardCompatibility:
             mock_os_ing.ingest_all.assert_called_once_with(100)
             mock_s3v_ing.ingest_all.assert_called_once_with(100)
 
-            # 全3つの index_manager の drop_index() と create_index() が呼ばれたことを検証
+            # Aurora: インデックス操作あり
             mock_aurora_im.drop_index.assert_called_once()
             mock_aurora_im.create_index.assert_called_once()
-            mock_os_im.drop_index.assert_called_once()
-            mock_os_im.create_index.assert_called_once()
+
+            # OpenSearch: インデックス操作なし（データ投入のみ）
+            # _run_all_databases では OpenSearchIndexManager を使用しない
+
+            # S3 Vectors: インデックス操作あり（no-op だが呼ばれる）
             mock_s3v_im.drop_index.assert_called_once()
             mock_s3v_im.create_index.assert_called_once()
 
@@ -83,7 +84,6 @@ class TestTargetDBAllBackwardCompatibility:
         mock_s3v_client = MagicMock()
 
         mock_aurora_im = MagicMock()
-        mock_os_im = MagicMock()
         mock_s3v_im = MagicMock()
 
         mock_aurora_ing = MagicMock()
@@ -108,7 +108,6 @@ class TestTargetDBAllBackwardCompatibility:
             patch("main._get_opensearch_client", return_value=mock_os_client),
             patch("main._get_s3vectors_client", return_value=mock_s3v_client),
             patch("main.AuroraIndexManager", return_value=mock_aurora_im),
-            patch("main.OpenSearchIndexManager", return_value=mock_os_im),
             patch("main.S3VectorsIndexManager", return_value=mock_s3v_im),
             patch("main.AuroraIngester", return_value=mock_aurora_ing),
             patch("main.OpenSearchIngester", return_value=mock_os_ing),
@@ -123,11 +122,13 @@ class TestTargetDBAllBackwardCompatibility:
             mock_os_ing.ingest_all.assert_called_once_with(50)
             mock_s3v_ing.ingest_all.assert_called_once_with(50)
 
-            # 全3つの index_manager の操作が呼ばれること
+            # Aurora: インデックス操作あり
             mock_aurora_im.drop_index.assert_called_once()
             mock_aurora_im.create_index.assert_called_once()
-            mock_os_im.drop_index.assert_called_once()
-            mock_os_im.create_index.assert_called_once()
+
+            # OpenSearch: インデックス操作なし（データ投入のみ）
+
+            # S3 Vectors: インデックス操作あり（no-op だが呼ばれる）
             mock_s3v_im.drop_index.assert_called_once()
             mock_s3v_im.create_index.assert_called_once()
 

@@ -23,11 +23,11 @@ describe("AuroraConstruct", () => {
     });
   });
 
-  test("Serverless v2 スケーリング設定が MinCapacity: 0, MaxCapacity: 16 である", () => {
+  test("Serverless v2 スケーリング設定が MinCapacity: 0, MaxCapacity: 5 である", () => {
     template.hasResourceProperties("AWS::RDS::DBCluster", {
       ServerlessV2ScalingConfiguration: {
         MinCapacity: 0,
-        MaxCapacity: 16,
+        MaxCapacity: 5,
       },
     });
   });

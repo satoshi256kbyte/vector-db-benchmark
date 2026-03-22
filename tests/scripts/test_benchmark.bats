@@ -38,8 +38,6 @@ setup() {
     [ "$S3VECTORS_BUCKET" = "vdbbench-dev-s3vectors-benchmark" ]
     [ "$ECS_CLUSTER" = "vdbbench-dev-ecs-benchmark" ]
     [ "$REGION" = "ap-northeast-1" ]
-    [ "$AURORA_MAX_ACU" = "16" ]
-    [ "$OPENSEARCH_MAX_OCU" = "10" ]
 }
 
 # =============================================================================
@@ -88,19 +86,6 @@ setup() {
     [ "$REGION" = "us-west-2" ]
 }
 
-@test "--aurora-max-acu で AURORA_MAX_ACU がオーバーライドされる" {
-    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
-    parse_args --aurora-max-acu 32
-
-    [ "$AURORA_MAX_ACU" = "32" ]
-}
-
-@test "--opensearch-max-ocu で OPENSEARCH_MAX_OCU がオーバーライドされる" {
-    # Feature: 04-benchmark-shell-script, Property 6: コマンドライン引数パースとデフォルト値
-    parse_args --opensearch-max-ocu 20
-
-    [ "$OPENSEARCH_MAX_OCU" = "20" ]
-}
 
 # =============================================================================
 # テスト: 複数引数の組み合わせ
@@ -111,13 +96,11 @@ setup() {
     parse_args \
         --record-count 200000 \
         --aurora-cluster custom-aurora \
-        --region eu-west-1 \
-        --aurora-max-acu 32
+        --region eu-west-1
 
     [ "$RECORD_COUNT" = "200000" ]
     [ "$AURORA_CLUSTER" = "custom-aurora" ]
     [ "$REGION" = "eu-west-1" ]
-    [ "$AURORA_MAX_ACU" = "32" ]
 }
 
 @test "一部の引数のみ指定した場合、未指定の引数はデフォルト値を保持する" {
@@ -133,8 +116,6 @@ setup() {
     [ "$OPENSEARCH_COLLECTION" = "vdbbench-dev-oss-vector" ]
     [ "$S3VECTORS_BUCKET" = "vdbbench-dev-s3vectors-benchmark" ]
     [ "$ECS_CLUSTER" = "vdbbench-dev-ecs-benchmark" ]
-    [ "$AURORA_MAX_ACU" = "16" ]
-    [ "$OPENSEARCH_MAX_OCU" = "10" ]
 }
 
 @test "全引数を同時に指定した場合、全てオーバーライドされデフォルト値は残らない" {
@@ -145,9 +126,7 @@ setup() {
         --opensearch-collection o-collection \
         --s3vectors-bucket s-bucket \
         --ecs-cluster e-cluster \
-        --region ap-southeast-1 \
-        --aurora-max-acu 32 \
-        --opensearch-max-ocu 5
+        --region ap-southeast-1
 
     [ "$RECORD_COUNT" = "999" ]
     [ "$AURORA_CLUSTER" = "a-cluster" ]
@@ -155,8 +134,6 @@ setup() {
     [ "$S3VECTORS_BUCKET" = "s-bucket" ]
     [ "$ECS_CLUSTER" = "e-cluster" ]
     [ "$REGION" = "ap-southeast-1" ]
-    [ "$AURORA_MAX_ACU" = "32" ]
-    [ "$OPENSEARCH_MAX_OCU" = "5" ]
 }
 
 # =============================================================================
@@ -190,21 +167,6 @@ setup() {
     '
     [ "$status" -ne 0 ]
     [[ "$output" == *"aws"* ]]
-}
-
-@test "check_prerequisites: psql 不在時にエラー終了する" {
-    run bash -c '
-        eval "$(sed -n "1,/^# エントリポイント$/p" "'"$BENCHMARK_SCRIPT"'" \
-            | sed "s/^set -euo pipefail$//" \
-            | grep -v "^trap " \
-            | grep -v "^parse_args \"\\\$@\"" \
-            | grep -v "^check_prerequisites$" \
-            | grep -v "^main$")"
-        command() { if [[ "$2" == "psql" ]]; then return 1; fi; builtin command "$@"; }
-        check_prerequisites
-    '
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"psql"* ]]
 }
 
 @test "check_prerequisites: jq 不在時にエラー終了する" {

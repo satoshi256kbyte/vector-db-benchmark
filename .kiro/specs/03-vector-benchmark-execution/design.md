@@ -8,7 +8,7 @@
 
 - 既存の単一 CDK スタック（VectorDbBenchmarkStack）にリソースを追加
 - ECS Fargate はISOLATEDサブネット内で動作（NAT Gateway 不使用、VPCエンドポイント経由）
-- データ投入時はインデックス削除→投入→再作成戦略で投入パフォーマンスを最大化
+- データ投入時は Aurora pgvector のみインデックス削除→投入→再作成戦略で投入パフォーマンスを最大化（OpenSearch は既存インデックスに Bulk API 投入、S3 Vectors はインデックス操作なし）
 - 検索テストでは投入済みベクトルをクエリベクトルとして再利用し、検索ヒットを保証
 - レコード数・検索回数はパラメータ化し、テスト時は少量、本番ベンチマーク時は大量に切り替え可能
 - 全リソースに removalPolicy: DESTROY を設定し `cdk destroy` で完全削除可能
@@ -206,7 +206,7 @@ ecs/bulk-ingest/
 ├── requirements.txt
 ├── main.py              # エントリポイント
 ├── ingestion.py         # DB別投入ロジック
-├── index_manager.py     # インデックス削除・再作成
+├── index_manager.py     # Aurora インデックス削除・再作成
 ├── vector_generator.py  # 決定論的ベクトル生成
 └── metrics.py           # メトリクス収集・出力
 ```
@@ -283,7 +283,7 @@ def generate_query_vectors(
 @dataclass
 class IngestionPhaseMetrics:
     """各フェーズの計測結果."""
-    phase: str              # "index_drop", "data_insert", "index_create"
+    phase: str              # "index_drop", "data_insert", "index_create"（Aurora のみ index_drop/index_create あり）
     duration_seconds: float
     record_count: int       # data_insert フェーズのみ有効
 
@@ -393,36 +393,10 @@ CREATE INDEX embeddings_hnsw_idx
     WITH (m = 16, ef_construction = 64);
 ```
 
-### OpenSearch インデックス操作
+### OpenSearch Bulk API 投入
 
 ```python
-# インデックス削除
-client.indices.delete(index="embeddings")
-
-# インデックス再作成（HNSWマッピング付き）
-client.indices.create(index="embeddings", body={
-    "settings": {
-        "index": {"knn": True, "knn.algo_param.ef_search": 100}
-    },
-    "mappings": {
-        "properties": {
-            "id": {"type": "integer"},
-            "content": {"type": "text"},
-            "embedding": {
-                "type": "knn_vector",
-                "dimension": 1536,
-                "method": {
-                    "name": "hnsw",
-                    "space_type": "cosinesimil",
-                    "engine": "faiss",
-                    "parameters": {"m": 16, "ef_construction": 64}
-                }
-            }
-        }
-    }
-})
-
-# Bulk API 投入
+# Bulk API 投入（既存インデックスにそのまま投入）
 bulk_body = []
 for i, vec in enumerate(vectors):
     bulk_body.append({"index": {"_index": "embeddings", "_id": str(i)}})
@@ -503,9 +477,9 @@ ENTRYPOINT ["python", "main.py"]
 | エラー種別 | 対処方法 | 動作 |
 | --- | --- | --- |
 | Aurora 接続失敗 | リトライ（最大3回、2秒間隔） | 失敗時は Aurora 投入をスキップし次の DB へ |
-| インデックス削除失敗 | エラーログ記録 | 該当 DB の投入処理を中断、次の DB へ |
+| Aurora インデックス削除失敗 | エラーログ記録 | Aurora の投入処理を中断、次の DB へ |
 | バッチ投入失敗 | リトライ（最大3回） | 失敗時はエラーログ記録、次の DB へ |
-| インデックス再作成失敗 | エラーログ記録 | 該当 DB のメトリクスに失敗を記録 |
+| Aurora インデックス再作成失敗 | エラーログ記録 | Aurora のメトリクスに失敗を記録 |
 | OpenSearch 接続失敗 | リトライ（最大3回） | 失敗時は OpenSearch 投入をスキップ |
 | S3 Vectors API 失敗 | リトライ（最大3回） | 失敗時は S3 Vectors 投入をスキップ |
 
@@ -584,7 +558,7 @@ logger.info("ingestion_complete", database="aurora_pgvector",
 | フェーズ所要時間合計 | プロパティテスト | Hypothesis |
 | クエリベクトル決定論的再生成 | プロパティテスト | Hypothesis |
 | 削除ポリシー一貫性 | プロパティテスト | fast-check |
-| インデックス削除→投入→再作成の順序 | ユニットテスト | pytest (mock) |
+| インデックス削除→投入→再作成の順序（Aurora のみ） | ユニットテスト | pytest (mock) |
 | エラー時のリトライ・スキップ動作 | ユニットテスト | pytest (mock) |
 | デフォルトパラメータ値 | ユニットテスト | pytest |
 | 検索テスト Lambda ハンドラー | ユニットテスト | pytest (mock) |
@@ -606,7 +580,7 @@ tests/
     bulk_ingest/
       test_vector_generator.py   # ベクトル生成テスト（プロパティテスト含む）
       test_ingestion.py          # 投入ロジックテスト
-      test_index_manager.py      # インデックス操作テスト
+      test_index_manager.py      # Aurora インデックス操作テスト
       test_metrics.py            # メトリクス算出テスト（プロパティテスト含む）
   functions/
     search_test/

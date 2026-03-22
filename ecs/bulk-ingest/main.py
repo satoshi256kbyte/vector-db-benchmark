@@ -380,16 +380,26 @@ def _run_count_operation(target_db: str) -> None:
                 count = result[0] if result else 0
             conn.close()
         except Exception as exc:
-            log.error("aurora_count_failed", error=str(exc))
-            sys.exit(1)
+            error_str = str(exc)
+            if "does not exist" in error_str:
+                log.info("aurora_table_not_found", message="embeddings テーブル未作成のため count=0")
+                count = 0
+            else:
+                log.error("aurora_count_failed", error=error_str)
+                sys.exit(1)
     elif target_db == "opensearch":
         try:
             os_client = _get_opensearch_client()
             resp = os_client.count(index="embeddings")
             count = resp.get("count", 0)
         except Exception as exc:
-            log.error("opensearch_count_failed", error=str(exc))
-            sys.exit(1)
+            error_str = str(exc)
+            if "index_not_found_exception" in error_str or "404" in error_str:
+                log.info("opensearch_index_not_found", message="embeddings インデックス未作成のため count=0")
+                count = 0
+            else:
+                log.error("opensearch_count_failed", error=error_str)
+                sys.exit(1)
     elif target_db == "s3vectors":
         try:
             s3v_client = _get_s3vectors_client()
@@ -401,8 +411,13 @@ def _run_count_operation(target_db: str) -> None:
             )
             count = len(resp.get("vectors", []))
         except Exception as exc:
-            log.error("s3vectors_count_failed", error=str(exc))
-            sys.exit(1)
+            error_str = str(exc)
+            if "NoSuchIndex" in error_str or "NoSuchVectorBucket" in error_str or "404" in error_str:
+                log.info("s3vectors_index_not_found", message="S3 Vectors インデックス未作成のため count=0")
+                count = 0
+            else:
+                log.error("s3vectors_count_failed", error=error_str)
+                sys.exit(1)
     else:
         log.error("invalid_target_db_for_count", target_db=target_db)
         sys.exit(1)
@@ -482,12 +497,13 @@ def _run_all_databases(record_count: int) -> None:
         aurora_result = _create_failure_result("aurora_pgvector", record_count, str(exc))
 
     # --- OpenSearch Serverless ---
+    # OpenSearch Serverless ではインデックス削除→再作成の効果がないため、
+    # データ投入のみ実行する（Bulk API で既存インデックスに直接挿入）
     opensearch_result: DatabaseIngestionResult
     try:
         os_client = _get_opensearch_client()
-        os_im = OpenSearchIndexManager(os_client)
         os_ing = OpenSearchIngester(os_client)
-        opensearch_result = _run_database_ingestion("opensearch", os_im, os_ing, record_count)
+        opensearch_result = _run_data_ingestion_only("opensearch", os_ing, record_count)
     except Exception as exc:
         logger.error("opensearch_connection_failed", error=str(exc))
         opensearch_result = _create_failure_result("opensearch", record_count, str(exc))

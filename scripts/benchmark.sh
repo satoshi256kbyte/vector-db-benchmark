@@ -16,18 +16,6 @@ OPENSEARCH_COLLECTION="vdbbench-dev-oss-vector"
 S3VECTORS_BUCKET="vdbbench-dev-s3vectors-benchmark"
 ECS_CLUSTER="vdbbench-dev-ecs-benchmark"
 REGION="ap-northeast-1"
-AURORA_MAX_ACU=5
-OPENSEARCH_MAX_OCU=4
-AURORA_ORIGINAL_MIN_ACU=""
-AURORA_ORIGINAL_MAX_ACU=""
-OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU=""
-OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU=""
-
-# =============================================================================
-# 状態フラグ（クリーンアップ用）
-# =============================================================================
-AURORA_SCALED_UP="false"
-OPENSEARCH_SCALED_UP="false"
 
 # =============================================================================
 # プレースホルダー変数（後続タスクで設定）
@@ -72,8 +60,6 @@ Options:
   --s3vectors-bucket NAME       S3 Vectors バケット名 (デフォルト: vdbbench-dev-s3vectors-benchmark)
   --ecs-cluster NAME            ECS クラスター名 (デフォルト: vdbbench-dev-ecs-benchmark)
   --region REGION               AWS リージョン (デフォルト: ap-northeast-1)
-  --aurora-max-acu N            ACU 拡張時の MaxCapacity (デフォルト: 10)
-  --opensearch-max-ocu N        OCU 拡張時の上限値 (デフォルト: 10)
   --ecs-log-group NAME          ECS タスクの CloudWatch Logs ロググループ名
   --aurora-secret-arn ARN       Aurora Secrets Manager シークレット ARN
   --task-definition ARN         ECS タスク定義 ARN
@@ -111,14 +97,6 @@ parse_args() {
                 ;;
             --region)
                 REGION="$2"
-                shift 2
-                ;;
-            --aurora-max-acu)
-                AURORA_MAX_ACU="$2"
-                shift 2
-                ;;
-            --opensearch-max-ocu)
-                OPENSEARCH_MAX_OCU="$2"
                 shift 2
                 ;;
             --aurora-secret-arn)
@@ -188,223 +166,10 @@ check_prerequisites() {
 }
 
 # =============================================================================
-# Aurora ACU スケーリング
-# =============================================================================
-
-# Aurora Serverless v2 の MaxCapacity を拡張する（MinCapacity は変更しない）
-scale_aurora_up() {
-    log_info "Aurora ACU スケーリング: MaxCapacity を ${AURORA_MAX_ACU} に拡張します..."
-
-    # 変更前の設定値を取得・保存
-    local current_config
-    current_config=$(aws rds describe-db-clusters \
-        --db-cluster-identifier "$AURORA_CLUSTER" \
-        --query 'DBClusters[0].ServerlessV2ScalingConfiguration' \
-        --output json \
-        --region "$REGION")
-    log_info "Aurora ACU 変更前: ${current_config}"
-
-    AURORA_ORIGINAL_MIN_ACU=$(echo "$current_config" | jq -r '.MinCapacity')
-    AURORA_ORIGINAL_MAX_ACU=$(echo "$current_config" | jq -r '.MaxCapacity')
-
-    # MaxCapacity のみ拡張（MinCapacity は現状維持）
-    if ! aws rds modify-db-cluster \
-        --db-cluster-identifier "$AURORA_CLUSTER" \
-        --serverless-v2-scaling-configuration \
-        "MinCapacity=${AURORA_ORIGINAL_MIN_ACU},MaxCapacity=${AURORA_MAX_ACU}" \
-        --apply-immediately \
-        --region "$REGION" > /dev/null; then
-        log_error "Aurora ACU の拡張に失敗しました"
-        return 1
-    fi
-
-    AURORA_SCALED_UP="true"
-    log_info "Aurora ACU 拡張コマンドを実行しました（MinCapacity=${AURORA_ORIGINAL_MIN_ACU}, MaxCapacity=${AURORA_MAX_ACU}）"
-
-    # クラスターが available になるまで待機
-    wait_aurora_available
-}
-
-# Aurora Serverless v2 の MaxCapacity を元の値に復元する
-scale_aurora_down() {
-    local restore_min="${AURORA_ORIGINAL_MIN_ACU:-0}"
-    local restore_max="${AURORA_ORIGINAL_MAX_ACU:-0.5}"
-    log_info "Aurora ACU スケーリング: MaxCapacity を ${restore_max} に復元します..."
-
-    # クラスターが available になるまで待機してから復元
-    if ! wait_aurora_available; then
-        log_error "Aurora クラスターが available にならないため、ACU 復元をスキップします"
-        return 1
-    fi
-
-    # MaxCapacity を元の値に復元（リトライ付き）
-    local max_retries=3
-    local retry=0
-    while [[ $retry -lt $max_retries ]]; do
-        if aws rds modify-db-cluster \
-            --db-cluster-identifier "$AURORA_CLUSTER" \
-            --serverless-v2-scaling-configuration \
-            "MinCapacity=${restore_min},MaxCapacity=${restore_max}" \
-            --apply-immediately \
-            --region "$REGION" > /dev/null 2>&1; then
-            break
-        fi
-        retry=$((retry + 1))
-        if [[ $retry -lt $max_retries ]]; then
-            log_info "Aurora ACU 復元リトライ（${retry}/${max_retries}）、30秒後に再試行..."
-            sleep 30
-            wait_aurora_available || true
-        else
-            log_error "Aurora ACU の復元に ${max_retries} 回失敗しました"
-            return 1
-        fi
-    done
-
-    AURORA_SCALED_UP="false"
-    log_info "Aurora ACU 復元コマンドを実行しました（MinCapacity=${restore_min}, MaxCapacity=${restore_max}）"
-
-    # クラスターが available になるまで待機
-    wait_aurora_available
-
-    # 変更後の設定値をログ記録
-    local current_config
-    current_config=$(aws rds describe-db-clusters \
-        --db-cluster-identifier "$AURORA_CLUSTER" \
-        --query 'DBClusters[0].ServerlessV2ScalingConfiguration' \
-        --output json \
-        --region "$REGION")
-    log_info "Aurora ACU 変更後: ${current_config}"
-}
-
-# Aurora クラスターのステータスが available になるまでポーリングする
-# 30秒間隔、最大20分（40回）
-wait_aurora_available() {
-    local max_attempts=40
-    local interval=30
-    local attempt=0
-
-    log_info "Aurora クラスターが available になるまで待機中..."
-
-    while [[ $attempt -lt $max_attempts ]]; do
-        local status
-        status=$(aws rds describe-db-clusters \
-            --db-cluster-identifier "$AURORA_CLUSTER" \
-            --query 'DBClusters[0].Status' \
-            --output text \
-            --region "$REGION")
-
-        if [[ "$status" == "available" ]]; then
-            log_info "Aurora クラスターが available になりました（${attempt} 回目のチェック）"
-            return 0
-        fi
-
-        attempt=$((attempt + 1))
-        log_info "Aurora クラスターのステータス: ${status}（${attempt}/${max_attempts} 回目、${interval}秒後に再チェック）"
-        sleep "$interval"
-    done
-
-    log_error "Aurora クラスターが ${max_attempts} 回のチェック（最大 $((max_attempts * interval / 60)) 分）後も available になりませんでした"
-    return 1
-}
-
-# =============================================================================
-# OpenSearch OCU スケーリング
-# =============================================================================
-
-# OpenSearch Serverless の OCU 上限を拡張する
-scale_opensearch_up() {
-    log_info "OpenSearch OCU スケーリング: OCU 上限を ${OPENSEARCH_MAX_OCU} に拡張します..."
-
-    # 変更前の設定値を取得・保存
-    local current_settings
-    current_settings=$(aws opensearchserverless get-account-settings \
-        --output json \
-        --region "$REGION")
-    log_info "OpenSearch OCU 変更前: ${current_settings}"
-
-    OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU=$(echo "$current_settings" | jq -r '.accountSettingsDetail.capacityLimits.maxIndexingCapacityInOCU')
-    OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU=$(echo "$current_settings" | jq -r '.accountSettingsDetail.capacityLimits.maxSearchCapacityInOCU')
-
-    # OCU 上限を拡張
-    if ! aws opensearchserverless update-account-settings \
-        --capacity-limits "maxIndexingCapacityInOCU=${OPENSEARCH_MAX_OCU},maxSearchCapacityInOCU=${OPENSEARCH_MAX_OCU}" \
-        --region "$REGION" > /dev/null; then
-        log_error "OpenSearch OCU の拡張に失敗しました"
-        return 1
-    fi
-
-    OPENSEARCH_SCALED_UP="true"
-    log_info "OpenSearch OCU 拡張コマンドを実行しました（maxIndexingCapacityInOCU=${OPENSEARCH_MAX_OCU}, maxSearchCapacityInOCU=${OPENSEARCH_MAX_OCU}）"
-
-    # 変更後の設定値をログ記録
-    local updated_settings
-    updated_settings=$(aws opensearchserverless get-account-settings \
-        --output json \
-        --region "$REGION")
-    log_info "OpenSearch OCU 変更後: ${updated_settings}"
-}
-
-# OpenSearch Serverless の OCU 上限を元の値に復元する
-scale_opensearch_down() {
-    local restore_indexing="${OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU:-2}"
-    local restore_search="${OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU:-2}"
-    log_info "OpenSearch OCU スケーリング: OCU 上限を元の値に復元します（indexing=${restore_indexing}, search=${restore_search}）..."
-
-    # 変更前の設定値をログ記録
-    local current_settings
-    current_settings=$(aws opensearchserverless get-account-settings \
-        --output json \
-        --region "$REGION")
-    log_info "OpenSearch OCU 復元前: ${current_settings}"
-
-    # OCU 上限を元の値に復元
-    if ! aws opensearchserverless update-account-settings \
-        --capacity-limits "maxIndexingCapacityInOCU=${restore_indexing},maxSearchCapacityInOCU=${restore_search}" \
-        --region "$REGION" > /dev/null; then
-        log_error "OpenSearch OCU の復元に失敗しました"
-        return 1
-    fi
-
-    OPENSEARCH_SCALED_UP="false"
-    log_info "OpenSearch OCU 復元コマンドを実行しました（maxIndexingCapacityInOCU=${restore_indexing}, maxSearchCapacityInOCU=${restore_search}）"
-
-    # 変更後の設定値をログ記録
-    local updated_settings
-    updated_settings=$(aws opensearchserverless get-account-settings \
-        --output json \
-        --region "$REGION")
-    log_info "OpenSearch OCU 復元後: ${updated_settings}"
-}
-
-# =============================================================================
 # クリーンアップ処理
 # =============================================================================
 cleanup() {
     log_info "クリーンアップ処理を実行中..."
-
-    # Aurora ACU を元に戻す
-    if [[ "$AURORA_SCALED_UP" == "true" ]]; then
-        log_info "Aurora ACU を元の値に戻しています..."
-        local restore_min="${AURORA_ORIGINAL_MIN_ACU:-0}"
-        local restore_max="${AURORA_ORIGINAL_MAX_ACU:-0.5}"
-        aws rds modify-db-cluster \
-            --db-cluster-identifier "$AURORA_CLUSTER" \
-            --serverless-v2-scaling-configuration \
-            "MinCapacity=${restore_min},MaxCapacity=${restore_max}" \
-            --apply-immediately \
-            --region "$REGION" 2>/dev/null || true
-    fi
-
-    # OpenSearch OCU を元に戻す
-    if [[ "$OPENSEARCH_SCALED_UP" == "true" ]]; then
-        log_info "OpenSearch OCU を元の値に戻しています..."
-        local restore_indexing="${OPENSEARCH_ORIGINAL_MAX_INDEXING_OCU:-2}"
-        local restore_search="${OPENSEARCH_ORIGINAL_MAX_SEARCH_OCU:-2}"
-        aws opensearchserverless update-account-settings \
-            --capacity-limits "maxIndexingCapacityInOCU=${restore_indexing},maxSearchCapacityInOCU=${restore_search}" \
-            --region "$REGION" 2>/dev/null || true
-    fi
-
     log_info "クリーンアップ完了"
 }
 
@@ -417,13 +182,6 @@ trap cleanup EXIT
 # Aurora の HNSW インデックス削除 + テーブル TRUNCATE（ECS タスク経由）
 drop_aurora_index() {
     log_info "Aurora インデックス削除を開始します（ECS タスク経由）..."
-
-    # Aurora が available であることを確認
-    if ! wait_aurora_available; then
-        log_error "Aurora クラスターが available でないため、インデックス削除をスキップします"
-        return 1
-    fi
-
     run_ecs_task_with_mode "aurora" "index_drop"
 }
 
@@ -562,29 +320,6 @@ _extract_record_count_from_logs() {
         ECS_COUNT_RESULT=0
         log_error "ECS タスクログからレコード数を取得できませんでした"
     fi
-}
-
-# =============================================================================
-# OpenSearch インデックス操作（ECS タスク経由）
-# =============================================================================
-
-# OpenSearch インデックスを削除する（ECS タスク経由）
-drop_opensearch_index() {
-    log_info "OpenSearch インデックス削除を開始します（ECS タスク経由）..."
-    if ! run_ecs_task_with_mode "opensearch" "index_drop"; then
-        log_info "OpenSearch インデックス削除に失敗しました。60秒後にリトライします..."
-        sleep 60
-        if ! run_ecs_task_with_mode "opensearch" "index_drop"; then
-            log_error "OpenSearch インデックス削除のリトライも失敗しました"
-            return 1
-        fi
-    fi
-}
-
-# OpenSearch インデックスを作成する（ECS タスク経由）
-create_opensearch_index() {
-    log_info "OpenSearch インデックス作成を開始します（ECS タスク経由）..."
-    run_ecs_task_with_mode "opensearch" "index_create"
 }
 
 # =============================================================================
@@ -1116,40 +851,11 @@ run_benchmark_cycle() {
 
     log_info "===== ${db_label} ベンチマークサイクル開始 ====="
 
-    # --- Step 1: スケーリング拡張 ---
-    case "$target_db" in
-        aurora)
-            if ! scale_aurora_up; then
-                cycle_success="false"
-                cycle_error="Aurora ACU スケーリング拡張に失敗"
-                log_error "$cycle_error"
-                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
-                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
-                return 0
-            fi
-            ;;
-        opensearch)
-            if ! scale_opensearch_up; then
-                cycle_success="false"
-                cycle_error="OpenSearch OCU スケーリング拡張に失敗"
-                log_error "$cycle_error"
-                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
-                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
-                return 0
-            fi
-            ;;
-        s3vectors)
-            log_info "S3 Vectors: スケーリング操作はスキップ"
-            ;;
-    esac
-
-    # --- Step 2: 投入前レコード数取得 ---
+    # --- Step 1: 投入前レコード数取得 ---
     pre_count=$(get_record_count "$target_db")
     log_info "${db_label} 投入前レコード数: ${pre_count}"
 
-    # --- Step 3: インデックス削除 ---
+    # --- Step 2: インデックス削除（Aurora のみ） ---
     case "$target_db" in
         aurora)
             if drop_aurora_index; then
@@ -1158,43 +864,23 @@ run_benchmark_cycle() {
                 cycle_success="false"
                 cycle_error="Aurora インデックス削除に失敗"
                 log_error "$cycle_error"
-                scale_aurora_down || true
                 save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
                     "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
                     "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
                 return 0
             fi
             ;;
-        opensearch)
-            if drop_opensearch_index; then
-                index_drop_success="true"
-            else
-                cycle_success="false"
-                cycle_error="OpenSearch インデックス削除に失敗"
-                log_error "$cycle_error"
-                scale_opensearch_down || true
-                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
-                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
-                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
-                return 0
-            fi
-            ;;
-        s3vectors)
-            log_info "S3 Vectors: インデックス削除はスキップ"
+        opensearch|s3vectors)
+            log_info "${db_label}: インデックス削除はスキップ"
             index_drop_success="true"
             ;;
     esac
 
-    # --- Step 4: ECS タスク実行（データ投入） ---
+    # --- Step 3: ECS タスク実行（データ投入） ---
     if ! run_ecs_task "$target_db" "$RECORD_COUNT"; then
         cycle_success="false"
         cycle_error="ECS データ投入タスクが失敗（target_db=${target_db}）"
         log_error "$cycle_error"
-        # スケーリング復元
-        case "$target_db" in
-            aurora)     scale_aurora_down || true ;;
-            opensearch) scale_opensearch_down || true ;;
-        esac
         save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
             "${START_TIME:-}" "${END_TIME:-}" "$duration_seconds" "$index_drop_success" "$index_create_success" \
             "${TASK_ARN:-}" "${EXIT_CODE:-1}" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
@@ -1213,7 +899,7 @@ run_benchmark_cycle() {
     # Fargate 合計秒数を加算
     fargate_total_seconds=$((fargate_total_seconds + duration_seconds))
 
-    # --- Step 5: インデックス作成 ---
+    # --- Step 4: インデックス作成（Aurora のみ） ---
     case "$target_db" in
         aurora)
             if create_aurora_index; then
@@ -1222,15 +908,8 @@ run_benchmark_cycle() {
                 log_error "Aurora インデックス作成に失敗しましたが、処理を続行します"
             fi
             ;;
-        opensearch)
-            if create_opensearch_index; then
-                index_create_success="true"
-            else
-                log_error "OpenSearch インデックス作成に失敗しましたが、処理を続行します"
-            fi
-            ;;
-        s3vectors)
-            log_info "S3 Vectors: インデックス作成はスキップ"
+        opensearch|s3vectors)
+            log_info "${db_label}: インデックス作成はスキップ"
             index_create_success="true"
             ;;
     esac
@@ -1260,31 +939,12 @@ run_benchmark_cycle() {
     fargate_cost=$(calculate_fargate_cost "$duration_seconds")
     log_info "${db_label} Fargate 概算コスト: \$${fargate_cost}"
 
-    # OpenSearch OCU 上限値を記録
-    local db_opensearch_ocu_max=0
-    if [[ "$target_db" == "opensearch" ]]; then
-        db_opensearch_ocu_max="$OPENSEARCH_MAX_OCU"
-    fi
-
-    # --- Step 10: スケーリング復元 ---
-    case "$target_db" in
-        aurora)
-            scale_aurora_down || log_error "Aurora ACU 復元に失敗しましたが、処理を続行します"
-            ;;
-        opensearch)
-            scale_opensearch_down || log_error "OpenSearch OCU 復元に失敗しましたが、処理を続行します"
-            ;;
-        s3vectors)
-            log_info "S3 Vectors: スケーリング復元はスキップ"
-            ;;
-    esac
-
-    # --- Step 11: 結果 JSON 保存 ---
+    # --- Step 9: 結果 JSON 保存 ---
     log_info "${db_label} 結果サマリー: 投入前=${pre_count}, 投入後=${post_count}, 処理時間=${duration_seconds}秒, Fargate コスト=\$${fargate_cost}"
     save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
         "$START_TIME" "$END_TIME" "$duration_seconds" "$index_drop_success" "$index_create_success" \
         "$TASK_ARN" "$EXIT_CODE" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error" \
-        "$fargate_cost" "$db_opensearch_ocu_max"
+        "$fargate_cost" "0"
 
     log_info "===== ${db_label} ベンチマークサイクル完了 ====="
 }
@@ -1357,7 +1017,7 @@ main() {
 
     # サマリー生成
     generate_summary "$total_duration_seconds" "$fargate_total_seconds" \
-        "$fargate_estimated_cost_usd" "$aurora_acu_peak" "$OPENSEARCH_MAX_OCU"
+        "$fargate_estimated_cost_usd" "$aurora_acu_peak" "0"
 
     # サマリー表示
     print_summary

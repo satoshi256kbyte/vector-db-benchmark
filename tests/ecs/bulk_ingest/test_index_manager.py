@@ -114,59 +114,43 @@ class TestAuroraIndexManagerCreateIndex:
 class TestOpenSearchIndexManagerDropIndex:
     """OpenSearchIndexManager.drop_index のテスト."""
 
-    def test_drop_index_calls_delete(self) -> None:
-        """indices.delete() が正しいパラメータで呼ばれること."""
+    def test_drop_index_is_noop(self) -> None:
+        """drop_index が no-op であること（クライアントメソッドを呼ばない）."""
         mock_client = MagicMock()
 
         manager = OpenSearchIndexManager(mock_client)
         manager.drop_index()
 
-        mock_client.indices.delete.assert_called_once_with(index=INDEX_NAME, ignore=[404])
+        mock_client.indices.delete.assert_not_called()
 
-    def test_drop_index_ignores_404(self) -> None:
-        """ignore=[404] が渡されていること."""
+    def test_drop_index_does_not_raise(self) -> None:
+        """drop_index が例外を発生させないこと."""
         mock_client = MagicMock()
 
         manager = OpenSearchIndexManager(mock_client)
+        # 例外が発生しないことを確認
         manager.drop_index()
-
-        kwargs = mock_client.indices.delete.call_args[1]
-        assert kwargs["ignore"] == [404]
 
 
 class TestOpenSearchIndexManagerCreateIndex:
     """OpenSearchIndexManager.create_index のテスト."""
 
-    def test_create_index_calls_create_with_mapping(self) -> None:
-        """indices.create() が HNSW マッピング付きで呼ばれること."""
+    def test_create_index_is_noop(self) -> None:
+        """create_index が no-op であること（クライアントメソッドを呼ばない）."""
         mock_client = MagicMock()
 
         manager = OpenSearchIndexManager(mock_client)
         manager.create_index()
 
-        mock_client.indices.create.assert_called_once()
-        kwargs = mock_client.indices.create.call_args[1]
-        assert kwargs["index"] == INDEX_NAME
+        mock_client.indices.create.assert_not_called()
 
-        body = kwargs["body"]
-        assert body["settings"]["index"]["knn"] is True
-        embedding_props = body["mappings"]["properties"]["embedding"]
-        assert embedding_props["type"] == "knn_vector"
-        assert embedding_props["method"]["name"] == "hnsw"
-        assert embedding_props["method"]["engine"] == "faiss"
-        assert embedding_props["method"]["parameters"]["m"] == 16
-        assert embedding_props["method"]["parameters"]["ef_construction"] == 64
-
-    def test_create_index_mapping_has_correct_dimension(self) -> None:
-        """マッピングの dimension が 1536 であること."""
+    def test_create_index_does_not_raise(self) -> None:
+        """create_index が例外を発生させないこと."""
         mock_client = MagicMock()
 
         manager = OpenSearchIndexManager(mock_client)
+        # 例外が発生しないことを確認
         manager.create_index()
-
-        kwargs = mock_client.indices.create.call_args[1]
-        embedding_props = kwargs["body"]["mappings"]["properties"]["embedding"]
-        assert embedding_props["dimension"] == VECTOR_DIMENSION
 
 
 # ---------------------------------------------------------------------------

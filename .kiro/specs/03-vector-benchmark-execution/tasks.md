@@ -31,11 +31,11 @@
 
 ## 5. インデックス戦略とデータ投入ロジック
 
-- [x] 5.1 `ecs/bulk-ingest/index_manager.py` にインデックス削除・再作成ロジックを実装する（Aurora: DROP/CREATE INDEX、OpenSearch: delete/create index、S3 Vectors: 操作なし）
+- [x] 5.1 `ecs/bulk-ingest/index_manager.py` にインデックス削除・再作成ロジックを実装する（Aurora: DROP/CREATE INDEX、OpenSearch: 操作なし、S3 Vectors: 操作なし）
 - [x] 5.2 `ecs/bulk-ingest/ingestion.py` にバッチ投入ロジックを実装する（Aurora: バッチ INSERT 1000件単位、OpenSearch: Bulk API、S3 Vectors: PutVectors バッチ）
 - [x] 5.3 `ecs/bulk-ingest/main.py` にエントリポイントを実装する（パラメータ読み取り、3DB 順次実行、エラーハンドリング、メトリクス出力）
 - [x] 5.4 `tests/ecs/bulk_ingest/test_ingestion.py` にユニットテストを作成する（バッチ投入、リトライ、エラーハンドリング）
-- [x] 5.5 `tests/ecs/bulk_ingest/test_index_manager.py` にユニットテストを作成する（インデックス削除→投入→再作成の順序検証）
+- [x] 5.5 `tests/ecs/bulk_ingest/test_index_manager.py` にユニットテストを作成する（Aurora インデックス削除→投入→再作成の順序検証）
 - [x] 5.6 プロパティテストを作成する: Property 2（バッチ投入呼び出し回数）を `tests/ecs/bulk_ingest/test_ingestion.py` に実装する
 
 ## 6. 検索テスト Lambda ロジック
