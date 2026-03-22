@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from dataclasses import asdict
 
@@ -244,15 +245,129 @@ def _create_failure_result(db_name: str, record_count: int, error: str) -> Datab
     )
 
 
-def main() -> None:
-    """メインエントリポイント: 3つのDBに対して順次データ投入を実行する."""
-    logger.info("bulk_ingest_start")
+VALID_TARGET_DBS = {"all", "aurora", "opensearch", "s3vectors"}
 
-    record_count = int(os.environ.get("RECORD_COUNT", "100000"))
+
+def _run_data_ingestion_only(
+    db_name: str,
+    ingester: AuroraIngester | OpenSearchIngester | S3VectorsIngester,
+    record_count: int,
+) -> DatabaseIngestionResult:
+    """1つのDBに対してデータ投入のみを実行する（インデックス操作なし）.
+
+    単一 DB 指定モード（TARGET_DB が aurora/opensearch/s3vectors）で使用する。
+    シェルスクリプト側でインデックス操作を制御するため、ここではデータ投入のみ行う。
+
+    Args:
+        db_name: データベース識別子
+        ingester: データ投入オブジェクト
+        record_count: 投入レコード数
+
+    Returns:
+        DatabaseIngestionResult
+    """
+    log = logger.bind(database=db_name)
+    phases: list[IngestionPhaseMetrics] = []
+
+    try:
+        log.info("phase_start", phase="data_insert")
+        start = time.monotonic()
+        inserted = ingester.ingest_all(record_count)
+        insert_duration = time.monotonic() - start
+        phases.append(
+            IngestionPhaseMetrics(phase="data_insert", duration_seconds=insert_duration, record_count=inserted)
+        )
+        log.info("phase_complete", phase="data_insert", duration_seconds=insert_duration, record_count=inserted)
+
+        total_duration = calculate_total_duration(phases)
+        throughput = calculate_throughput(record_count, total_duration) if total_duration > 0 else 0.0
+
+        log.info(
+            "data_ingestion_only_complete",
+            total_duration_seconds=total_duration,
+            throughput_records_per_sec=throughput,
+        )
+
+        return DatabaseIngestionResult(
+            database=db_name,
+            phases=phases,
+            total_duration_seconds=total_duration,
+            throughput_records_per_sec=throughput,
+            record_count=record_count,
+            success=True,
+        )
+
+    except Exception as exc:
+        log.error("data_ingestion_only_failed", error=str(exc))
+        total_duration = calculate_total_duration(phases) if phases else 0.0
+        return DatabaseIngestionResult(
+            database=db_name,
+            phases=phases,
+            total_duration_seconds=total_duration,
+            throughput_records_per_sec=0.0,
+            record_count=record_count,
+            success=False,
+            error_message=str(exc),
+        )
+
+
+def _run_single_database(target_db: str, record_count: int) -> None:
+    """単一 DB に対してデータ投入のみを実行する.
+
+    インデックス操作はスキップし、データ投入フェーズのみ実行する。
+    シェルスクリプト側でインデックス操作を制御する前提。
+
+    Args:
+        target_db: 対象 DB 識別子（"aurora", "opensearch", "s3vectors"）
+        record_count: 投入レコード数
+    """
     s3vectors_bucket_name = os.environ.get("S3VECTORS_BUCKET_NAME", "")
     s3vectors_index_name = os.environ.get("S3VECTORS_INDEX_NAME", "")
 
-    logger.info("parameters", record_count=record_count)
+    logger.info("single_db_mode", target_db=target_db, record_count=record_count)
+
+    result: DatabaseIngestionResult
+
+    if target_db == "aurora":
+        try:
+            conn = _get_aurora_connection()
+            ingester = AuroraIngester(conn)
+            result = _run_data_ingestion_only("aurora_pgvector", ingester, record_count)
+        except Exception as exc:
+            logger.error("aurora_connection_failed", error=str(exc))
+            result = _create_failure_result("aurora_pgvector", record_count, str(exc))
+
+    elif target_db == "opensearch":
+        try:
+            os_client = _get_opensearch_client()
+            ingester = OpenSearchIngester(os_client)
+            result = _run_data_ingestion_only("opensearch", ingester, record_count)
+        except Exception as exc:
+            logger.error("opensearch_connection_failed", error=str(exc))
+            result = _create_failure_result("opensearch", record_count, str(exc))
+
+    elif target_db == "s3vectors":
+        try:
+            s3v_client = _get_s3vectors_client()
+            ingester = S3VectorsIngester(s3v_client, s3vectors_bucket_name, s3vectors_index_name)
+            result = _run_data_ingestion_only("s3vectors", ingester, record_count)
+        except Exception as exc:
+            logger.error("s3vectors_connection_failed", error=str(exc))
+            result = _create_failure_result("s3vectors", record_count, str(exc))
+
+    logger.info("single_db_complete", result=asdict(result))
+
+
+def _run_all_databases(record_count: int) -> None:
+    """3つのDBに対して順次データ投入を実行する（既存動作、後方互換性維持）.
+
+    インデックス削除→データ投入→インデックス再作成の全フェーズを実行する。
+
+    Args:
+        record_count: 投入レコード数
+    """
+    s3vectors_bucket_name = os.environ.get("S3VECTORS_BUCKET_NAME", "")
+    s3vectors_index_name = os.environ.get("S3VECTORS_INDEX_NAME", "")
 
     # --- Aurora pgvector ---
     aurora_result: DatabaseIngestionResult
@@ -297,6 +412,31 @@ def main() -> None:
     )
 
     logger.info("bulk_ingest_complete", report=asdict(report))
+
+
+def main() -> None:
+    """メインエントリポイント: TARGET_DB に応じてデータ投入を実行する.
+
+    環境変数 TARGET_DB の値に応じて処理対象 DB を切り替える:
+    - "all" または未設定: 3つのDB全てを順次処理（インデックス操作含む、後方互換性維持）
+    - "aurora" / "opensearch" / "s3vectors": 指定DBのデータ投入のみ（インデックス操作なし）
+    - その他: エラーログ出力 + sys.exit(1)
+    """
+    logger.info("bulk_ingest_start")
+
+    target_db = os.environ.get("TARGET_DB", "all").lower()
+    record_count = int(os.environ.get("RECORD_COUNT", "100000"))
+
+    logger.info("parameters", target_db=target_db, record_count=record_count)
+
+    if target_db not in VALID_TARGET_DBS:
+        logger.error("invalid_target_db", target_db=target_db)
+        sys.exit(1)
+
+    if target_db == "all":
+        _run_all_databases(record_count)
+    else:
+        _run_single_database(target_db, record_count)
 
 
 if __name__ == "__main__":
