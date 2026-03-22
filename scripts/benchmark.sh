@@ -314,8 +314,37 @@ scale_opensearch_down() {
 }
 
 # =============================================================================
+# クリーンアップ処理
+# =============================================================================
+cleanup() {
+    log_info "クリーンアップ処理を実行中..."
+
+    # Aurora ACU を元に戻す
+    if [[ "$AURORA_SCALED_UP" == "true" ]]; then
+        log_info "Aurora ACU を元の値に戻しています..."
+        aws rds modify-db-cluster \
+            --db-cluster-identifier "$AURORA_CLUSTER" \
+            --serverless-v2-scaling-configuration \
+            "MinCapacity=0,MaxCapacity=16" \
+            --apply-immediately \
+            --region "$REGION" 2>/dev/null || true
+    fi
+
+    # OpenSearch OCU を元に戻す
+    if [[ "$OPENSEARCH_SCALED_UP" == "true" ]]; then
+        log_info "OpenSearch OCU を元の値に戻しています..."
+        aws opensearchserverless update-account-settings \
+            --capacity-limits "maxIndexingCapacityInOCU=2,maxSearchCapacityInOCU=2" \
+            --region "$REGION" 2>/dev/null || true
+    fi
+
+    log_info "クリーンアップ完了"
+}
+
+trap cleanup EXIT
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - cleanup + trap (Task 4.3)
 # - get_aurora_credentials / drop_aurora_index / create_aurora_index (Task 5.1)
 # - drop_opensearch_index / create_opensearch_index / run_ecs_task_with_mode (Task 5.2)
 # - run_ecs_task (Task 5.3)
