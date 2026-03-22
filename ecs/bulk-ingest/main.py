@@ -329,6 +329,7 @@ def _run_index_operation(target_db: str, operation: str) -> None:
         try:
             conn = _get_aurora_connection()
             index_manager = AuroraIndexManager(conn)
+            index_manager.ensure_table()
         except Exception as exc:
             log.error("aurora_connection_failed", error=str(exc))
             sys.exit(1)
@@ -447,6 +448,8 @@ def _run_single_database(target_db: str, record_count: int) -> None:
     if target_db == "aurora":
         try:
             conn = _get_aurora_connection()
+            aurora_im = AuroraIndexManager(conn)
+            aurora_im.ensure_table()
             ingester = AuroraIngester(conn)
             result = _run_data_ingestion_only("aurora_pgvector", ingester, record_count)
         except Exception as exc:
@@ -490,6 +493,7 @@ def _run_all_databases(record_count: int) -> None:
     try:
         conn = _get_aurora_connection()
         aurora_im = AuroraIndexManager(conn)
+        aurora_im.ensure_table()
         aurora_ing = AuroraIngester(conn)
         aurora_result = _run_database_ingestion("aurora_pgvector", aurora_im, aurora_ing, record_count)
     except Exception as exc:

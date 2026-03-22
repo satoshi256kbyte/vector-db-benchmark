@@ -68,6 +68,8 @@ class TestDropIndexPreservation:
         """
         mock_conn = _make_mock_connection()
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+        # fetchone が (True,) を返すようにしてテーブル存在をシミュレート
+        mock_cursor.fetchone.return_value = (True,)
         manager = AuroraIndexManager(mock_conn)
 
         manager.drop_index()
@@ -95,20 +97,23 @@ class TestDropIndexPreservation:
         mock_conn.commit.assert_called()
 
     def test_drop_index_sql_order(self) -> None:
-        """drop_index() が DROP INDEX → TRUNCATE の順序で実行すること.
+        """drop_index() が DROP INDEX → テーブル存在チェック → TRUNCATE の順序で実行すること.
 
         **Validates: Requirements 3.1**
         """
         mock_conn = _make_mock_connection()
         mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+        # fetchone が (True,) を返すようにしてテーブル存在をシミュレート
+        mock_cursor.fetchone.return_value = (True,)
         manager = AuroraIndexManager(mock_conn)
 
         manager.drop_index()
 
         executed_sqls = [c.args[0] for c in mock_cursor.execute.call_args_list]
-        assert len(executed_sqls) == 2, f"drop_index() は2つの SQL を実行すべき（実際: {len(executed_sqls)}）"
+        assert len(executed_sqls) == 3, f"drop_index() は3つの SQL を実行すべき（実際: {len(executed_sqls)}）"
         assert "DROP INDEX" in executed_sqls[0], "最初の SQL は DROP INDEX であるべき"
-        assert "TRUNCATE" in executed_sqls[1], "2番目の SQL は TRUNCATE であるべき"
+        assert "SELECT EXISTS" in executed_sqls[1], "2番目の SQL はテーブル存在チェックであるべき"
+        assert "TRUNCATE" in executed_sqls[2], "3番目の SQL は TRUNCATE であるべき"
 
 
 # ===========================================================================

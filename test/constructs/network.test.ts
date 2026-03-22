@@ -29,8 +29,8 @@ describe("NetworkConstruct", () => {
   });
 
   describe("VPC Endpoints", () => {
-    test("VPC Interface Endpoint が 6 つ、Gateway Endpoint が 1 つ存在する", () => {
-      template.resourceCountIs("AWS::EC2::VPCEndpoint", 7);
+    test("VPC Interface Endpoint が 5 つ、Gateway Endpoint が 1 つ存在する", () => {
+      template.resourceCountIs("AWS::EC2::VPCEndpoint", 6);
     });
 
     test("Secrets Manager の VPC Endpoint が作成される", () => {
@@ -58,22 +58,6 @@ describe("NetworkConstruct", () => {
               "com.amazonaws.",
               { Ref: "AWS::Region" },
               ".logs",
-            ],
-          ],
-        },
-        VpcEndpointType: "Interface",
-      });
-    });
-
-    test("OpenSearch Serverless の VPC Endpoint が作成される", () => {
-      template.hasResourceProperties("AWS::EC2::VPCEndpoint", {
-        ServiceName: {
-          "Fn::Join": [
-            "",
-            [
-              "com.amazonaws.",
-              { Ref: "AWS::Region" },
-              ".aoss",
             ],
           ],
         },

@@ -125,15 +125,6 @@ export class NetworkConstruct extends Construct {
       securityGroups: [this.vpcEndpointSg],
     });
 
-    // VPC Endpoint: OpenSearch Serverless (aoss)
-    this.vpc.addInterfaceEndpoint("OpenSearchServerlessEndpoint", {
-      service: new ec2.InterfaceVpcEndpointService(
-        `com.amazonaws.${cdk.Aws.REGION}.aoss`,
-      ),
-      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
-      securityGroups: [this.vpcEndpointSg],
-    });
-
     // VPC Endpoint: S3 Vectors
     this.vpc.addInterfaceEndpoint("S3VectorsEndpoint", {
       service: new ec2.InterfaceVpcEndpointService(

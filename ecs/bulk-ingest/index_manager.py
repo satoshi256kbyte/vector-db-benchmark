@@ -43,14 +43,38 @@ class AuroraIndexManager:
         """
         self._connection = connection
 
+    def ensure_table(self) -> None:
+        """pgvector 拡張の有効化と embeddings テーブルの自動作成を行う.
+
+        冪等に動作し、拡張・テーブルが既に存在する場合はスキップされる。
+        """
+        log = logger.bind(database="aurora_pgvector")
+        log.info("ensuring_table", table_name=INDEX_NAME)
+        with self._connection.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            log.info("pgvector_extension_ensured")
+            cur.execute(
+                f"CREATE TABLE IF NOT EXISTS {INDEX_NAME} "
+                f"(content TEXT, embedding vector({VECTOR_DIMENSION}));"
+            )
+            log.info("table_ensured", table_name=INDEX_NAME)
+        self._connection.commit()
+
     def drop_index(self) -> None:
         """HNSWインデックスを削除し、テーブルデータをTRUNCATEする."""
         log = logger.bind(database="aurora_pgvector")
         log.info("dropping_index", index_name=HNSW_INDEX_NAME)
         with self._connection.cursor() as cur:
             cur.execute(f"DROP INDEX IF EXISTS {HNSW_INDEX_NAME};")
-            log.info("truncating_table", table_name=INDEX_NAME)
-            cur.execute(f"TRUNCATE TABLE {INDEX_NAME};")
+            cur.execute(
+                f"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{INDEX_NAME}');"
+            )
+            table_exists = cur.fetchone()[0]
+            if table_exists:
+                log.info("truncating_table", table_name=INDEX_NAME)
+                cur.execute(f"TRUNCATE TABLE {INDEX_NAME};")
+            else:
+                log.info("table_not_found_skipping_truncate", table_name=INDEX_NAME)
         self._connection.commit()
         log.info("drop_index_complete", index_name=HNSW_INDEX_NAME)
 
