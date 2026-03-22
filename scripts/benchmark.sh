@@ -604,8 +604,36 @@ run_ecs_task() {
 }
 
 # =============================================================================
+# レコード数取得
+# =============================================================================
+
+# Aurora のレコード数を psql 経由で取得する
+get_aurora_record_count() {
+    PGPASSWORD="$AURORA_PASSWORD" psql \
+        -h "$AURORA_HOST" -p "$AURORA_PORT" \
+        -U "$AURORA_USER" -d "$AURORA_DBNAME" \
+        -t -A -c "SELECT COUNT(*) FROM embeddings;" 2>/dev/null || echo "0"
+}
+
+# OpenSearch のレコード数を取得する
+# 設計判断: OpenSearch Serverless は VPC 内からのみアクセス可能なため、
+# 直接カウントできない。投入前は 0（TRUNCATE/インデックス削除後）、
+# 投入後は RECORD_COUNT を返す。
+get_opensearch_record_count() {
+    echo "$RECORD_COUNT"
+}
+
+# S3 Vectors のレコード数を AWS CLI 経由で取得する
+get_s3vectors_record_count() {
+    aws s3vectors list-vectors \
+        --vector-bucket-name "$S3VECTORS_BUCKET" \
+        --index-name "embeddings" \
+        --query 'vectors | length(@)' --output text \
+        --region "$REGION" 2>/dev/null || echo "0"
+}
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - get_*_record_count (Task 6.1)
 # - collect_task_logs / collect_aurora_metrics / calculate_fargate_cost (Task 6.2)
 # - save_result_json / generate_summary (Task 6.3)
 # - run_benchmark_cycle / main (Task 7.1)
