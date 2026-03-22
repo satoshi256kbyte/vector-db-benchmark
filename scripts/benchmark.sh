@@ -762,13 +762,574 @@ calculate_fargate_cost() {
 }
 
 # =============================================================================
-# 後続タスクで追加される関数のプレースホルダー
-# - save_result_json / generate_summary (Task 6.3)
-# - run_benchmark_cycle / main (Task 7.1)
+# 結果ディレクトリ作成
 # =============================================================================
+
+# ベンチマーク結果ディレクトリを作成し、グローバル変数 RESULT_DIR に設定する
+RESULT_DIR=""
+BENCHMARK_ID=""
+
+create_result_dir() {
+    BENCHMARK_ID=$(date -u +"%Y%m%d-%H%M%S")
+    RESULT_DIR="results/${BENCHMARK_ID}"
+
+    mkdir -p "$RESULT_DIR"
+    log_info "結果ディレクトリを作成しました: ${RESULT_DIR}"
+}
+
+# =============================================================================
+# 個別 DB 結果 JSON 生成・保存
+# =============================================================================
+
+# 個別 DB の結果 JSON を生成しファイルに保存する
+# 引数:
+#   $1  - database: DB 識別名（aurora_pgvector, opensearch, s3vectors）
+#   $2  - record_count: 投入レコード数
+#   $3  - pre_count: 投入前レコード数
+#   $4  - post_count: 投入後レコード数
+#   $5  - start_time: 開始時刻（ISO 8601）
+#   $6  - end_time: 終了時刻（ISO 8601）
+#   $7  - duration_seconds: 処理時間（秒）
+#   $8  - index_drop_success: インデックス削除成功フラグ（true/false）
+#   $9  - index_create_success: インデックス作成成功フラグ（true/false）
+#   $10 - ecs_task_arn: ECS タスク ARN
+#   $11 - ecs_exit_code: ECS タスク終了コード
+#   $12 - acu_before: ACU 変更前値
+#   $13 - acu_during: ACU ピーク値
+#   $14 - acu_after: ACU 変更後値
+#   $15 - success: 成功フラグ（true/false）
+#   $16 - error_message: エラーメッセージ（なければ null）
+save_result_json() {
+    local database="$1"
+    local record_count="$2"
+    local pre_count="$3"
+    local post_count="$4"
+    local start_time="$5"
+    local end_time="$6"
+    local duration_seconds="$7"
+    local index_drop_success="$8"
+    local index_create_success="$9"
+    local ecs_task_arn="${10}"
+    local ecs_exit_code="${11}"
+    local acu_before="${12}"
+    local acu_during="${13}"
+    local acu_after="${14}"
+    local success="${15}"
+    local error_message="${16}"
+
+    # スループット算出（duration_seconds が 0 の場合は 0）
+    local throughput="0"
+    if [[ "$duration_seconds" -gt 0 ]]; then
+        throughput=$(echo "scale=2; $record_count / $duration_seconds" | bc)
+    fi
+
+    # DB 識別名からファイル名を決定（aurora_pgvector → aurora, opensearch → opensearch, s3vectors → s3vectors）
+    local file_prefix
+    case "$database" in
+        aurora_pgvector) file_prefix="aurora" ;;
+        opensearch)      file_prefix="opensearch" ;;
+        s3vectors)       file_prefix="s3vectors" ;;
+        *)               file_prefix="$database" ;;
+    esac
+
+    local output_file="${RESULT_DIR}/${file_prefix}-result.json"
+
+    # jq で JSON を生成（proper escaping と null 処理）
+    jq -n \
+        --arg database "$database" \
+        --argjson record_count "$record_count" \
+        --argjson pre_count "$pre_count" \
+        --argjson post_count "$post_count" \
+        --arg start_time "$start_time" \
+        --arg end_time "$end_time" \
+        --argjson duration_seconds "$duration_seconds" \
+        --argjson throughput "$throughput" \
+        --argjson index_drop_success "$index_drop_success" \
+        --argjson index_create_success "$index_create_success" \
+        --arg ecs_task_arn "$ecs_task_arn" \
+        --argjson ecs_exit_code "$ecs_exit_code" \
+        --argjson acu_before "$acu_before" \
+        --argjson acu_during "$acu_during" \
+        --argjson acu_after "$acu_after" \
+        --argjson success "$success" \
+        --arg error_message "$error_message" \
+        '{
+            database: $database,
+            record_count: $record_count,
+            pre_count: $pre_count,
+            post_count: $post_count,
+            start_time: $start_time,
+            end_time: $end_time,
+            duration_seconds: $duration_seconds,
+            throughput_records_per_sec: $throughput,
+            index_drop_success: $index_drop_success,
+            index_create_success: $index_create_success,
+            ecs_task_arn: $ecs_task_arn,
+            ecs_exit_code: $ecs_exit_code,
+            acu_before: $acu_before,
+            acu_during: $acu_during,
+            acu_after: $acu_after,
+            success: $success,
+            error_message: (if $error_message == "" then null else $error_message end)
+        }' > "$output_file"
+
+    log_info "結果 JSON を保存しました: ${output_file}"
+}
+
+# =============================================================================
+# サマリー JSON 生成
+# =============================================================================
+
+# 全 DB の結果を統合したサマリー JSON を生成する
+# 引数:
+#   $1 - total_duration_seconds: 全体の処理時間（秒）
+#   $2 - fargate_total_seconds: Fargate 合計実行時間（秒）
+#   $3 - fargate_estimated_cost_usd: Fargate 概算コスト（USD）
+#   $4 - aurora_acu_peak: Aurora ACU ピーク値
+#   $5 - opensearch_ocu_max: OpenSearch OCU 上限値
+generate_summary() {
+    local total_duration_seconds="$1"
+    local fargate_total_seconds="$2"
+    local fargate_estimated_cost_usd="$3"
+    local aurora_acu_peak="$4"
+    local opensearch_ocu_max="$5"
+
+    local completed_at
+    completed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    local output_file="${RESULT_DIR}/summary.json"
+
+    # 各 DB の結果 JSON を読み込んで results オブジェクトを構築
+    local aurora_result="{}"
+    local opensearch_result="{}"
+    local s3vectors_result="{}"
+
+    if [[ -f "${RESULT_DIR}/aurora-result.json" ]]; then
+        aurora_result=$(jq '{
+            duration_seconds: .duration_seconds,
+            throughput_records_per_sec: .throughput_records_per_sec,
+            pre_count: .pre_count,
+            post_count: .post_count,
+            success: .success
+        }' "${RESULT_DIR}/aurora-result.json")
+    fi
+
+    if [[ -f "${RESULT_DIR}/opensearch-result.json" ]]; then
+        opensearch_result=$(jq '{
+            duration_seconds: .duration_seconds,
+            throughput_records_per_sec: .throughput_records_per_sec,
+            pre_count: .pre_count,
+            post_count: .post_count,
+            success: .success
+        }' "${RESULT_DIR}/opensearch-result.json")
+    fi
+
+    if [[ -f "${RESULT_DIR}/s3vectors-result.json" ]]; then
+        s3vectors_result=$(jq '{
+            duration_seconds: .duration_seconds,
+            throughput_records_per_sec: .throughput_records_per_sec,
+            pre_count: .pre_count,
+            post_count: .post_count,
+            success: .success
+        }' "${RESULT_DIR}/s3vectors-result.json")
+    fi
+
+    # jq でサマリー JSON を生成
+    jq -n \
+        --arg benchmark_id "$BENCHMARK_ID" \
+        --arg region "$REGION" \
+        --argjson record_count "$RECORD_COUNT" \
+        --argjson vector_dimension 1536 \
+        --argjson aurora_result "$aurora_result" \
+        --argjson opensearch_result "$opensearch_result" \
+        --argjson s3vectors_result "$s3vectors_result" \
+        --argjson aurora_acu_peak "$aurora_acu_peak" \
+        --argjson opensearch_ocu_max "$opensearch_ocu_max" \
+        --argjson fargate_total_seconds "$fargate_total_seconds" \
+        --argjson fargate_vcpu 2 \
+        --argjson fargate_memory_gb 4 \
+        --argjson fargate_estimated_cost_usd "$fargate_estimated_cost_usd" \
+        --argjson total_duration_seconds "$total_duration_seconds" \
+        --arg completed_at "$completed_at" \
+        '{
+            benchmark_id: $benchmark_id,
+            region: $region,
+            record_count: $record_count,
+            vector_dimension: $vector_dimension,
+            results: {
+                aurora_pgvector: $aurora_result,
+                opensearch: $opensearch_result,
+                s3vectors: $s3vectors_result
+            },
+            cost_summary: {
+                aurora_acu_peak: $aurora_acu_peak,
+                opensearch_ocu_max: $opensearch_ocu_max,
+                fargate_total_seconds: $fargate_total_seconds,
+                fargate_vcpu: $fargate_vcpu,
+                fargate_memory_gb: $fargate_memory_gb,
+                fargate_estimated_cost_usd: $fargate_estimated_cost_usd
+            },
+            total_duration_seconds: $total_duration_seconds,
+            completed_at: $completed_at
+        }' > "$output_file"
+
+    log_info "サマリー JSON を保存しました: ${output_file}"
+}
+
+# =============================================================================
+# サマリーコンソール表示
+# =============================================================================
+
+# サマリー JSON の内容をコンソールに表示する
+print_summary() {
+    local summary_file="${RESULT_DIR}/summary.json"
+
+    if [[ ! -f "$summary_file" ]]; then
+        log_error "サマリーファイルが見つかりません: ${summary_file}"
+        return 1
+    fi
+
+    log_separator
+    echo ""
+    echo "  ベンチマーク結果サマリー"
+    echo "  Benchmark ID: $(jq -r '.benchmark_id' "$summary_file")"
+    echo "  Region: $(jq -r '.region' "$summary_file")"
+    echo "  Record Count: $(jq -r '.record_count' "$summary_file")"
+    echo ""
+    log_separator
+
+    # 各 DB の結果を表示
+    local dbs=("aurora_pgvector" "opensearch" "s3vectors")
+    for db in "${dbs[@]}"; do
+        local success
+        success=$(jq -r ".results.${db}.success // \"N/A\"" "$summary_file")
+        local duration
+        duration=$(jq -r ".results.${db}.duration_seconds // \"N/A\"" "$summary_file")
+        local throughput
+        throughput=$(jq -r ".results.${db}.throughput_records_per_sec // \"N/A\"" "$summary_file")
+        local post_count
+        post_count=$(jq -r ".results.${db}.post_count // \"N/A\"" "$summary_file")
+
+        printf "  %-20s | success: %-5s | duration: %6s sec | throughput: %8s rec/sec | records: %s\n" \
+            "$db" "$success" "$duration" "$throughput" "$post_count"
+    done
+
+    echo ""
+    log_separator
+
+    # コストサマリー表示
+    echo "  コストサマリー:"
+    echo "    Aurora ACU peak:          $(jq -r '.cost_summary.aurora_acu_peak' "$summary_file")"
+    echo "    OpenSearch OCU max:       $(jq -r '.cost_summary.opensearch_ocu_max' "$summary_file")"
+    echo "    Fargate total seconds:    $(jq -r '.cost_summary.fargate_total_seconds' "$summary_file")"
+    echo "    Fargate estimated cost:   \$$(jq -r '.cost_summary.fargate_estimated_cost_usd' "$summary_file")"
+    echo ""
+    echo "  Total duration: $(jq -r '.total_duration_seconds' "$summary_file") seconds"
+    echo "  Completed at:   $(jq -r '.completed_at' "$summary_file")"
+    echo "  Results dir:    ${RESULT_DIR}/"
+    echo ""
+    log_separator
+}
+
+# =============================================================================
+# ベンチマークサイクル実行
+# =============================================================================
+
+# 1つの DB に対するベンチマークサイクル全体を実行する
+# 引数:
+#   $1 - target_db: DB 識別名（aurora, opensearch, s3vectors）
+run_benchmark_cycle() {
+    local target_db="$1"
+    local db_label=""
+    local cycle_success="true"
+    local cycle_error=""
+    local pre_count=0
+    local post_count=0
+    local acu_before=0
+    local acu_during=0
+    local acu_after=0
+    local index_drop_success="false"
+    local index_create_success="false"
+    local duration_seconds=0
+
+    case "$target_db" in
+        aurora)      db_label="aurora_pgvector" ;;
+        opensearch)  db_label="opensearch" ;;
+        s3vectors)   db_label="s3vectors" ;;
+        *)
+            log_error "不明な target_db: ${target_db}"
+            return 1
+            ;;
+    esac
+
+    log_info "===== ${db_label} ベンチマークサイクル開始 ====="
+
+    # --- Step 1: スケーリング拡張 ---
+    case "$target_db" in
+        aurora)
+            if ! scale_aurora_up; then
+                cycle_success="false"
+                cycle_error="Aurora ACU スケーリング拡張に失敗"
+                log_error "$cycle_error"
+                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+                return 0
+            fi
+            ;;
+        opensearch)
+            if ! scale_opensearch_up; then
+                cycle_success="false"
+                cycle_error="OpenSearch OCU スケーリング拡張に失敗"
+                log_error "$cycle_error"
+                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+                return 0
+            fi
+            ;;
+        s3vectors)
+            log_info "S3 Vectors: スケーリング操作はスキップ"
+            ;;
+    esac
+
+    # --- Step 2: Aurora 認証情報取得（Aurora のみ） ---
+    if [[ "$target_db" == "aurora" ]]; then
+        if ! get_aurora_credentials; then
+            cycle_success="false"
+            cycle_error="Aurora 認証情報の取得に失敗"
+            log_error "$cycle_error"
+            scale_aurora_down || true
+            save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+                "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+                "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+            return 0
+        fi
+    fi
+
+    # --- Step 3: 投入前レコード数取得 ---
+    case "$target_db" in
+        aurora)      pre_count=$(get_aurora_record_count) ;;
+        opensearch)  pre_count=0 ;;
+        s3vectors)   pre_count=$(get_s3vectors_record_count) ;;
+    esac
+    log_info "${db_label} 投入前レコード数: ${pre_count}"
+
+    # --- Step 4: インデックス削除 ---
+    case "$target_db" in
+        aurora)
+            if drop_aurora_index; then
+                index_drop_success="true"
+            else
+                cycle_success="false"
+                cycle_error="Aurora インデックス削除に失敗"
+                log_error "$cycle_error"
+                scale_aurora_down || true
+                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+                return 0
+            fi
+            ;;
+        opensearch)
+            if drop_opensearch_index; then
+                index_drop_success="true"
+            else
+                cycle_success="false"
+                cycle_error="OpenSearch インデックス削除に失敗"
+                log_error "$cycle_error"
+                scale_opensearch_down || true
+                save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+                    "" "" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+                    "" "0" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+                return 0
+            fi
+            ;;
+        s3vectors)
+            log_info "S3 Vectors: インデックス削除はスキップ"
+            index_drop_success="true"
+            ;;
+    esac
+
+    # --- Step 5: ECS タスク実行（データ投入） ---
+    if ! run_ecs_task "$target_db" "$RECORD_COUNT"; then
+        cycle_success="false"
+        cycle_error="ECS データ投入タスクが失敗（target_db=${target_db}）"
+        log_error "$cycle_error"
+        # スケーリング復元
+        case "$target_db" in
+            aurora)     scale_aurora_down || true ;;
+            opensearch) scale_opensearch_down || true ;;
+        esac
+        save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+            "${START_TIME:-}" "${END_TIME:-}" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+            "${TASK_ARN:-}" "${EXIT_CODE:-1}" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+        return 0
+    fi
+
+    # 処理時間算出
+    local start_epoch end_epoch
+    start_epoch=$(date -d "$START_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$START_TIME" +%s 2>/dev/null || echo "0")
+    end_epoch=$(date -d "$END_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$END_TIME" +%s 2>/dev/null || echo "0")
+    if [[ "$start_epoch" -gt 0 && "$end_epoch" -gt 0 ]]; then
+        duration_seconds=$((end_epoch - start_epoch))
+    fi
+    log_info "${db_label} 処理時間: ${duration_seconds} 秒"
+
+    # Fargate 合計秒数を加算
+    fargate_total_seconds=$((fargate_total_seconds + duration_seconds))
+
+    # --- Step 6: インデックス作成 ---
+    case "$target_db" in
+        aurora)
+            if create_aurora_index; then
+                index_create_success="true"
+            else
+                log_error "Aurora インデックス作成に失敗しましたが、処理を続行します"
+            fi
+            ;;
+        opensearch)
+            if create_opensearch_index; then
+                index_create_success="true"
+            else
+                log_error "OpenSearch インデックス作成に失敗しましたが、処理を続行します"
+            fi
+            ;;
+        s3vectors)
+            log_info "S3 Vectors: インデックス作成はスキップ"
+            index_create_success="true"
+            ;;
+    esac
+
+    # --- Step 7: 投入後レコード数取得 ---
+    case "$target_db" in
+        aurora)      post_count=$(get_aurora_record_count) ;;
+        opensearch)  post_count=$(get_opensearch_record_count) ;;
+        s3vectors)   post_count=$(get_s3vectors_record_count) ;;
+    esac
+    log_info "${db_label} 投入後レコード数: ${post_count}"
+
+    # --- Step 8: ログ収集 ---
+    collect_task_logs "$target_db" "$RESULT_DIR" || log_error "ログ収集に失敗しましたが、処理を続行します"
+
+    # --- Step 9: メトリクス収集 ---
+    case "$target_db" in
+        aurora)
+            acu_during=$(collect_aurora_metrics)
+            if [[ -n "$acu_during" && "$acu_during" != "0" ]]; then
+                aurora_acu_peak="$acu_during"
+            fi
+            ;;
+        *)
+            log_info "${db_label}: Aurora メトリクス収集はスキップ"
+            ;;
+    esac
+
+    # --- Step 10: Fargate コスト算出 ---
+    local fargate_cost
+    fargate_cost=$(calculate_fargate_cost "$duration_seconds")
+    log_info "${db_label} Fargate 概算コスト: \$${fargate_cost}"
+
+    # --- Step 11: スケーリング復元 ---
+    case "$target_db" in
+        aurora)
+            scale_aurora_down || log_error "Aurora ACU 復元に失敗しましたが、処理を続行します"
+            ;;
+        opensearch)
+            scale_opensearch_down || log_error "OpenSearch OCU 復元に失敗しましたが、処理を続行します"
+            ;;
+        s3vectors)
+            log_info "S3 Vectors: スケーリング復元はスキップ"
+            ;;
+    esac
+
+    # --- Step 12: 結果 JSON 保存 ---
+    save_result_json "$db_label" "$RECORD_COUNT" "$pre_count" "$post_count" \
+        "$START_TIME" "$END_TIME" "$duration_seconds" "$index_drop_success" "$index_create_success" \
+        "$TASK_ARN" "$EXIT_CODE" "$acu_before" "$acu_during" "$acu_after" "$cycle_success" "$cycle_error"
+
+    log_info "===== ${db_label} ベンチマークサイクル完了 ====="
+}
+
+# =============================================================================
+# メイン関数
+# =============================================================================
+
+main() {
+    # 結果ディレクトリ作成
+    create_result_dir
+
+    # 全体開始時刻
+    local overall_start
+    overall_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    log_info "ベンチマーク全体開始: ${overall_start}"
+
+    # グローバル集計変数
+    fargate_total_seconds=0
+    aurora_acu_peak=0
+
+    # --- Aurora ベンチマーク ---
+    log_separator
+    log_info "【1/3】Aurora pgvector ベンチマーク開始"
+    log_separator
+    run_benchmark_cycle "aurora" || true
+
+    # --- 区切りログ ---
+    log_separator
+    log_info "Aurora ベンチマーク完了。OpenSearch ベンチマークに進みます。"
+    log_separator
+
+    # --- OpenSearch ベンチマーク ---
+    log_separator
+    log_info "【2/3】OpenSearch Serverless ベンチマーク開始"
+    log_separator
+    run_benchmark_cycle "opensearch" || true
+
+    # --- 区切りログ ---
+    log_separator
+    log_info "OpenSearch ベンチマーク完了。S3 Vectors ベンチマークに進みます。"
+    log_separator
+
+    # --- S3 Vectors ベンチマーク ---
+    log_separator
+    log_info "【3/3】Amazon S3 Vectors ベンチマーク開始"
+    log_separator
+    run_benchmark_cycle "s3vectors" || true
+
+    # --- 全体終了 ---
+    local overall_end
+    overall_end=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    log_info "ベンチマーク全体終了: ${overall_end}"
+
+    # 全体処理時間算出
+    local overall_start_epoch overall_end_epoch total_duration_seconds
+    overall_start_epoch=$(date -d "$overall_start" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$overall_start" +%s 2>/dev/null || echo "0")
+    overall_end_epoch=$(date -d "$overall_end" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$overall_end" +%s 2>/dev/null || echo "0")
+    if [[ "$overall_start_epoch" -gt 0 && "$overall_end_epoch" -gt 0 ]]; then
+        total_duration_seconds=$((overall_end_epoch - overall_start_epoch))
+    else
+        total_duration_seconds=0
+    fi
+    log_info "全体処理時間: ${total_duration_seconds} 秒"
+
+    # Fargate 概算コスト算出
+    local fargate_estimated_cost_usd
+    fargate_estimated_cost_usd=$(calculate_fargate_cost "$fargate_total_seconds")
+    log_info "Fargate 合計実行時間: ${fargate_total_seconds} 秒, 概算コスト: \$${fargate_estimated_cost_usd}"
+
+    # サマリー生成
+    generate_summary "$total_duration_seconds" "$fargate_total_seconds" \
+        "$fargate_estimated_cost_usd" "$aurora_acu_peak" "$OPENSEARCH_MAX_OCU"
+
+    # サマリー表示
+    print_summary
+
+    log_info "ベンチマーク全体が完了しました。結果: ${RESULT_DIR}/"
+}
 
 # =============================================================================
 # エントリポイント
 # =============================================================================
 parse_args "$@"
 check_prerequisites
+main
