@@ -153,9 +153,168 @@ check_prerequisites() {
 }
 
 # =============================================================================
+# Aurora ACU スケーリング
+# =============================================================================
+
+# Aurora Serverless v2 の最小 ACU を拡張する
+scale_aurora_up() {
+    log_info "Aurora ACU スケーリング: 最小 ACU を ${AURORA_MIN_ACU} に拡張します..."
+
+    # 変更前の設定値をログ記録
+    local current_config
+    current_config=$(aws rds describe-db-clusters \
+        --db-cluster-identifier "$AURORA_CLUSTER" \
+        --query 'DBClusters[0].ServerlessV2ScalingConfiguration' \
+        --output json \
+        --region "$REGION")
+    log_info "Aurora ACU 変更前: ${current_config}"
+
+    # 最小 ACU を拡張
+    if ! aws rds modify-db-cluster \
+        --db-cluster-identifier "$AURORA_CLUSTER" \
+        --serverless-v2-scaling-configuration \
+        "MinCapacity=${AURORA_MIN_ACU},MaxCapacity=16" \
+        --apply-immediately \
+        --region "$REGION" > /dev/null; then
+        log_error "Aurora ACU の拡張に失敗しました"
+        return 1
+    fi
+
+    AURORA_SCALED_UP="true"
+    log_info "Aurora ACU 拡張コマンドを実行しました（MinCapacity=${AURORA_MIN_ACU}, MaxCapacity=16）"
+
+    # クラスターが available になるまで待機
+    wait_aurora_available
+}
+
+# Aurora Serverless v2 の最小 ACU を元の値（0）に復元する
+scale_aurora_down() {
+    log_info "Aurora ACU スケーリング: 最小 ACU を 0 に復元します..."
+
+    # 最小 ACU を 0 に復元
+    if ! aws rds modify-db-cluster \
+        --db-cluster-identifier "$AURORA_CLUSTER" \
+        --serverless-v2-scaling-configuration \
+        "MinCapacity=0,MaxCapacity=16" \
+        --apply-immediately \
+        --region "$REGION" > /dev/null; then
+        log_error "Aurora ACU の復元に失敗しました"
+        return 1
+    fi
+
+    AURORA_SCALED_UP="false"
+    log_info "Aurora ACU 復元コマンドを実行しました（MinCapacity=0, MaxCapacity=16）"
+
+    # クラスターが available になるまで待機
+    wait_aurora_available
+
+    # 変更後の設定値をログ記録
+    local current_config
+    current_config=$(aws rds describe-db-clusters \
+        --db-cluster-identifier "$AURORA_CLUSTER" \
+        --query 'DBClusters[0].ServerlessV2ScalingConfiguration' \
+        --output json \
+        --region "$REGION")
+    log_info "Aurora ACU 変更後: ${current_config}"
+}
+
+# Aurora クラスターのステータスが available になるまでポーリングする
+# 30秒間隔、最大20分（40回）
+wait_aurora_available() {
+    local max_attempts=40
+    local interval=30
+    local attempt=0
+
+    log_info "Aurora クラスターが available になるまで待機中..."
+
+    while [[ $attempt -lt $max_attempts ]]; do
+        local status
+        status=$(aws rds describe-db-clusters \
+            --db-cluster-identifier "$AURORA_CLUSTER" \
+            --query 'DBClusters[0].Status' \
+            --output text \
+            --region "$REGION")
+
+        if [[ "$status" == "available" ]]; then
+            log_info "Aurora クラスターが available になりました（${attempt} 回目のチェック）"
+            return 0
+        fi
+
+        attempt=$((attempt + 1))
+        log_info "Aurora クラスターのステータス: ${status}（${attempt}/${max_attempts} 回目、${interval}秒後に再チェック）"
+        sleep "$interval"
+    done
+
+    log_error "Aurora クラスターが ${max_attempts} 回のチェック（最大 $((max_attempts * interval / 60)) 分）後も available になりませんでした"
+    return 1
+}
+
+# =============================================================================
+# OpenSearch OCU スケーリング
+# =============================================================================
+
+# OpenSearch Serverless の OCU 上限を拡張する
+scale_opensearch_up() {
+    log_info "OpenSearch OCU スケーリング: OCU 上限を ${OPENSEARCH_MAX_OCU} に拡張します..."
+
+    # 変更前の設定値をログ記録
+    local current_settings
+    current_settings=$(aws opensearchserverless get-account-settings \
+        --output json \
+        --region "$REGION")
+    log_info "OpenSearch OCU 変更前: ${current_settings}"
+
+    # OCU 上限を拡張
+    if ! aws opensearchserverless update-account-settings \
+        --capacity-limits "maxIndexingCapacityInOCU=${OPENSEARCH_MAX_OCU},maxSearchCapacityInOCU=${OPENSEARCH_MAX_OCU}" \
+        --region "$REGION" > /dev/null; then
+        log_error "OpenSearch OCU の拡張に失敗しました"
+        return 1
+    fi
+
+    OPENSEARCH_SCALED_UP="true"
+    log_info "OpenSearch OCU 拡張コマンドを実行しました（maxIndexingCapacityInOCU=${OPENSEARCH_MAX_OCU}, maxSearchCapacityInOCU=${OPENSEARCH_MAX_OCU}）"
+
+    # 変更後の設定値をログ記録
+    local updated_settings
+    updated_settings=$(aws opensearchserverless get-account-settings \
+        --output json \
+        --region "$REGION")
+    log_info "OpenSearch OCU 変更後: ${updated_settings}"
+}
+
+# OpenSearch Serverless の OCU 上限を元の値（2）に復元する
+scale_opensearch_down() {
+    log_info "OpenSearch OCU スケーリング: OCU 上限を 2 に復元します..."
+
+    # 変更前の設定値をログ記録
+    local current_settings
+    current_settings=$(aws opensearchserverless get-account-settings \
+        --output json \
+        --region "$REGION")
+    log_info "OpenSearch OCU 復元前: ${current_settings}"
+
+    # OCU 上限を 2 に復元
+    if ! aws opensearchserverless update-account-settings \
+        --capacity-limits "maxIndexingCapacityInOCU=2,maxSearchCapacityInOCU=2" \
+        --region "$REGION" > /dev/null; then
+        log_error "OpenSearch OCU の復元に失敗しました"
+        return 1
+    fi
+
+    OPENSEARCH_SCALED_UP="false"
+    log_info "OpenSearch OCU 復元コマンドを実行しました（maxIndexingCapacityInOCU=2, maxSearchCapacityInOCU=2）"
+
+    # 変更後の設定値をログ記録
+    local updated_settings
+    updated_settings=$(aws opensearchserverless get-account-settings \
+        --output json \
+        --region "$REGION")
+    log_info "OpenSearch OCU 復元後: ${updated_settings}"
+}
+
+# =============================================================================
 # 後続タスクで追加される関数のプレースホルダー
-# - scale_aurora_up / scale_aurora_down / wait_aurora_available (Task 4.1)
-# - scale_opensearch_up / scale_opensearch_down (Task 4.2)
 # - cleanup + trap (Task 4.3)
 # - get_aurora_credentials / drop_aurora_index / create_aurora_index (Task 5.1)
 # - drop_opensearch_index / create_opensearch_index / run_ecs_task_with_mode (Task 5.2)
