@@ -366,3 +366,56 @@ EOF
     result=$(calculate_fargate_cost 0)
     [ "$result" = "0" ] || [ "$result" = "0.0000" ] || [ "$result" = ".0000" ]
 }
+
+# =============================================================================
+# テスト: ECS Waiter タイムアウト - バグ条件探索テスト
+# Feature: 06-ecs-waiter-timeout-fix, Property 1: Bug Condition
+# **Validates: Requirements 1.1, 1.2**
+#
+# 未修正コードでは aws ecs wait tasks-stopped を使用しており、
+# カスタムポーリングループ（MAX_WAIT_SECONDS / POLL_INTERVAL）が存在しない。
+# 修正後はカスタムポーリングループに置き換えられ、テストが成功する。
+# =============================================================================
+
+@test "Bug Condition: run_ecs_task() がカスタムポーリングループを使用していること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 1: Bug Condition
+    # **Validates: Requirements 1.1**
+    #
+    # 修正後の期待動作: run_ecs_task() は aws ecs wait tasks-stopped を使用せず、
+    # MAX_WAIT_SECONDS / POLL_INTERVAL によるカスタムポーリングループを使用する。
+    # 未修正コードでは aws ecs wait tasks-stopped を使用しているため失敗する。
+
+    # run_ecs_task 関数の定義を抽出
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    # カスタムポーリングループの変数が存在すること
+    [[ "$func_body" == *"MAX_WAIT_SECONDS"* ]] || [[ "$func_body" == *"POLL_INTERVAL"* ]]
+}
+
+@test "Bug Condition: run_ecs_task_with_mode() がカスタムポーリングループを使用していること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 1: Bug Condition
+    # **Validates: Requirements 1.2**
+    #
+    # 修正後の期待動作: run_ecs_task_with_mode() は aws ecs wait tasks-stopped を使用せず、
+    # MAX_WAIT_SECONDS / POLL_INTERVAL によるカスタムポーリングループを使用する。
+    # 未修正コードでは aws ecs wait tasks-stopped を使用しているため失敗する。
+
+    # run_ecs_task_with_mode 関数の定義を抽出
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task_with_mode()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    # カスタムポーリングループの変数が存在すること
+    [[ "$func_body" == *"MAX_WAIT_SECONDS"* ]] || [[ "$func_body" == *"POLL_INTERVAL"* ]]
+}
+
+@test "Bug Condition: 未修正コードでは MAX_WAIT_SECONDS / POLL_INTERVAL が存在しないこと（逆説テスト）" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 1: Bug Condition
+    # **Validates: Requirements 1.1, 1.2**
+    #
+    # このテストは修正後のコードで成功する:
+    # スクリプト全体に MAX_WAIT_SECONDS または POLL_INTERVAL が定義されていること。
+    # 未修正コードではこれらの変数が存在しないため失敗する。
+
+    grep -q "MAX_WAIT_SECONDS\|POLL_INTERVAL" "$BENCHMARK_SCRIPT"
+}
