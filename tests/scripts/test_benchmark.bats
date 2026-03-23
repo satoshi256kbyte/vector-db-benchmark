@@ -419,3 +419,109 @@ EOF
 
     grep -q "MAX_WAIT_SECONDS\|POLL_INTERVAL" "$BENCHMARK_SCRIPT"
 }
+
+# =============================================================================
+# テスト: 保全プロパティテスト - ECS タスク起動パラメータと戻り値の維持
+# Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+# **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.8**
+#
+# 未修正コードでこのテストは成功する（保全すべきベースライン動作を確認）。
+# 修正後もこのテストが成功し続けることで、リグレッションがないことを保証する。
+# =============================================================================
+
+@test "Preservation: run_ecs_task() がコンテナオーバーライドに BulkIngestContainer を使用すること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.1, 3.2**
+    #
+    # 観察: 未修正コードで run_ecs_task() のコンテナオーバーライドを確認。
+    # BulkIngestContainer が使用されていることを記録。
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"BulkIngestContainer"* ]]
+}
+
+@test "Preservation: run_ecs_task() が FARGATE 起動タイプを使用すること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.1, 3.2**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"FARGATE"* ]]
+}
+
+@test "Preservation: run_ecs_task() がネットワーク設定（awsvpcConfiguration）を含むこと" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.1, 3.2**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"awsvpcConfiguration"* ]]
+}
+
+@test "Preservation: run_ecs_task() が環境変数 TARGET_DB, TASK_MODE, RECORD_COUNT を設定すること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.1, 3.2**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"TARGET_DB"* ]]
+    [[ "$func_body" == *"TASK_MODE"* ]]
+    [[ "$func_body" == *"RECORD_COUNT"* ]]
+}
+
+@test "Preservation: run_ecs_task() が失敗時に return 1 を返すこと" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.8**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"return 1"* ]]
+}
+
+@test "Preservation: run_ecs_task_with_mode() がコンテナオーバーライドに BulkIngestContainer を使用すること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.3, 3.4**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task_with_mode()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"BulkIngestContainer"* ]]
+}
+
+@test "Preservation: run_ecs_task_with_mode() が FARGATE 起動タイプを使用すること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.3, 3.4**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task_with_mode()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"FARGATE"* ]]
+}
+
+@test "Preservation: run_ecs_task_with_mode() が失敗時に return 1 を返すこと" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.8**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task_with_mode()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    [[ "$func_body" == *"return 1"* ]]
+}
+
+@test "Preservation: run_ecs_task_with_mode() が終了コード確認で異常終了を検出すること" {
+    # Feature: 06-ecs-waiter-timeout-fix, Property 2: Preservation
+    # **Validates: Requirements 3.8**
+
+    local func_body
+    func_body=$(sed -n '/^run_ecs_task_with_mode()/,/^}/p' "$BENCHMARK_SCRIPT")
+
+    # 終了コードの確認ロジックが存在すること
+    [[ "$func_body" == *"exit_code"* ]]
+    [[ "$func_body" == *"describe-tasks"* ]]
+}
