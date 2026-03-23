@@ -367,7 +367,7 @@ print_search_summary() {
         p95_ms=$(jq -r ".results.${db}.latency.p95_ms // \"N/A\"" "$summary_file")
         p99_ms=$(jq -r ".results.${db}.latency.p99_ms // \"N/A\"" "$summary_file")
         qps=$(jq -r ".results.${db}.throughput_qps // \"N/A\"" "$summary_file")
-        success=$(jq -r ".results.${db}.success // \"N/A\"" "$summary_file")
+        success=$(jq -r "if .results.${db}.success == null then \"N/A\" else .results.${db}.success end" "$summary_file")
 
         if [[ "$success" == "true" ]]; then
             success_mark="✓"

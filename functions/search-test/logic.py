@@ -97,15 +97,16 @@ def search_aurora(
         try:
             with connection.cursor() as cur:
                 cur.execute(
-                    "SELECT id, content, embedding <=> %s::vector AS distance "
+                    "SELECT content, embedding <=> %s::vector AS distance "
                     "FROM embeddings ORDER BY distance LIMIT %s;",
                     (vec, top_k),
                 )
                 cur.fetchall()
             elapsed_ms = (time.monotonic() - start) * 1000
             latencies_ms.append(elapsed_ms)
-        except Exception:
-            logger.warning("aurora_query_failed", query_index=len(latencies_ms))
+        except Exception as exc:
+            logger.warning("aurora_query_failed", query_index=len(latencies_ms), error=str(exc))
+            connection.rollback()
     total_duration = time.monotonic() - total_start
 
     if not latencies_ms:
@@ -152,8 +153,8 @@ def search_opensearch(
             )
             elapsed_ms = (time.monotonic() - start) * 1000
             latencies_ms.append(elapsed_ms)
-        except Exception:
-            logger.warning("opensearch_query_failed", query_index=len(latencies_ms))
+        except Exception as exc:
+            logger.warning("opensearch_query_failed", query_index=len(latencies_ms), error=str(exc))
     total_duration = time.monotonic() - total_start
 
     if not latencies_ms:
@@ -206,8 +207,8 @@ def search_s3vectors(
             )
             elapsed_ms = (time.monotonic() - start) * 1000
             latencies_ms.append(elapsed_ms)
-        except Exception:
-            logger.warning("s3vectors_query_failed", query_index=len(latencies_ms))
+        except Exception as exc:
+            logger.warning("s3vectors_query_failed", query_index=len(latencies_ms), error=str(exc))
     total_duration = time.monotonic() - total_start
 
     if not latencies_ms:
@@ -347,10 +348,12 @@ def _get_aurora_connection() -> psycopg2.extensions.connection:
             )
             logger.info("aurora_connection_established", attempt=attempt)
             return conn
-        except psycopg2.OperationalError:
-            logger.warning("aurora_connection_retry", attempt=attempt)
+        except psycopg2.OperationalError as exc:
+            logger.warning("aurora_connection_retry", attempt=attempt, error=str(exc))
             if attempt == MAX_RETRIES:
-                raise RuntimeError(f"Aurora connection failed after {MAX_RETRIES} retries")
+                raise RuntimeError(
+                    f"Aurora connection failed after {MAX_RETRIES} retries: {exc}"
+                ) from exc
             time.sleep(RETRY_DELAY_SECONDS)
 
     raise RuntimeError("Aurora connection failed")  # pragma: no cover
@@ -396,13 +399,17 @@ def _get_opensearch_client() -> OpenSearch:
                 verify_certs=True,
                 connection_class=RequestsHttpConnection,
             )
-            client.info()
+            # OpenSearch Serverless は root / (info API) をサポートしないため、
+            # サポート対象の cat.indices API で接続確認を行う
+            client.cat.indices(format="json")
             logger.info("opensearch_connection_established", attempt=attempt)
             return client
-        except Exception:
-            logger.warning("opensearch_connection_retry", attempt=attempt)
+        except Exception as exc:
+            logger.warning("opensearch_connection_retry", attempt=attempt, error=str(exc))
             if attempt == MAX_RETRIES:
-                raise RuntimeError(f"OpenSearch connection failed after {MAX_RETRIES} retries")
+                raise RuntimeError(
+                    f"OpenSearch connection failed after {MAX_RETRIES} retries: {exc}"
+                ) from exc
             time.sleep(RETRY_DELAY_SECONDS)
 
     raise RuntimeError("OpenSearch connection failed")  # pragma: no cover
@@ -422,10 +429,12 @@ def _get_s3vectors_client() -> S3VectorsClient:
             client: S3VectorsClient = boto3.client("s3vectors")
             logger.info("s3vectors_client_created", attempt=attempt)
             return client
-        except Exception:
-            logger.warning("s3vectors_client_retry", attempt=attempt)
+        except Exception as exc:
+            logger.warning("s3vectors_client_retry", attempt=attempt, error=str(exc))
             if attempt == MAX_RETRIES:
-                raise RuntimeError(f"S3 Vectors client creation failed after {MAX_RETRIES} retries")
+                raise RuntimeError(
+                    f"S3 Vectors client creation failed after {MAX_RETRIES} retries: {exc}"
+                ) from exc
             time.sleep(RETRY_DELAY_SECONDS)
 
     raise RuntimeError("S3 Vectors client creation failed")  # pragma: no cover
