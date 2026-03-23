@@ -1,0 +1,548 @@
+<mxfile host="65bd71144e">
+    <diagram id="iMB5ma5Vk5T-L0XwXqzB" name="Page-1">
+        <mxGraphModel dx="2786" dy="1997" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1200" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="60" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="-160" y="-80" width="920" height="560" as="geometry"/>
+                </mxCell>
+                <mxCell id="57" value="AWS Cloud" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" parent="1" vertex="1">
+                    <mxGeometry x="-120" y="-40" width="840" height="480" as="geometry"/>
+                </mxCell>
+                <mxCell id="58" value="VPC" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc2;strokeColor=#8C4FFF;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#AAB7B8;dashed=0;" vertex="1" parent="57">
+                    <mxGeometry x="40" y="40" width="480" height="400" as="geometry"/>
+                </mxCell>
+                <mxCell id="59" value="Private subnet" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;grStroke=0;strokeColor=#00A4A6;fillColor=#E6F6F7;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=0;" vertex="1" parent="58">
+                    <mxGeometry x="38" y="40" width="322" height="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="46" value="" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=data:image/png,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;" parent="1" vertex="1">
+                    <mxGeometry x="560" y="80" width="78.69" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="47" value="Amazon Open Search Serverless" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="506.3" y="160" width="186.09" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="48" value="" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=data:image/png,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;" parent="1" vertex="1">
+                    <mxGeometry x="564.69" y="200" width="74" height="74" as="geometry"/>
+                </mxCell>
+                <mxCell id="49" value="S3 Vectors" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="506.29999999999995" y="280" width="186.09" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="52" value="" style="endArrow=classic;html=1;" parent="1" target="39" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="240" y="240" as="sourcePoint"/>
+                        <mxPoint x="380" y="139" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="300" y="240"/>
+                            <mxPoint x="300" y="119"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="54" value="" style="endArrow=classic;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="39" target="46" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="450" y="500" as="sourcePoint"/>
+                        <mxPoint x="500" y="450" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="55" value="" style="endArrow=classic;html=1;" parent="1" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="440" y="240" as="sourcePoint"/>
+                        <mxPoint x="560" y="240" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="32" value="" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="200" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;" parent="1" vertex="1">
+                    <mxGeometry x="160" y="80" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="Amazon ECS&lt;br&gt;データ投入用" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="154.5" y="158" width="89" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" parent="1" vertex="1">
+                    <mxGeometry x="160" y="200" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="AWS Lambda&lt;br&gt;検索用" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="160" y="278" width="89" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="34" value="" style="endArrow=classic;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="30" target="32" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="580" y="330" as="sourcePoint"/>
+                        <mxPoint x="630" y="280" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="50" y="120"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="35" value="" style="endArrow=classic;html=1;" parent="1" source="27" target="32" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="180" y="400" as="sourcePoint"/>
+                        <mxPoint x="190" y="240" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="33" value="Amazon Aurora Serverless v2" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="-32.75" y="278" width="163.5" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="39" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#4D27AA;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.endpoints;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="80" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="41" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#4D27AA;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.endpoints;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="200" width="78" height="78" as="geometry"/>
+                </mxCell>
+                <mxCell id="40" value="Endpoints&lt;br&gt;（OpenSearch用）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="342.25" y="158" width="113.5" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="42" value="Endpoints&lt;br&gt;（OpenSearch用）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="342.25" y="278" width="113.5" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="53" value="" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="30" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="250" y="370" as="sourcePoint"/>
+                        <mxPoint x="360" y="240" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="300" y="119"/>
+                            <mxPoint x="300" y="240"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="pgPJN3mkdb9HmjkAxg-2" name="Page-1">
+        <mxGraphModel dx="1800" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1200" math="0" shadow="0" adaptiveColors="auto">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <!-- VPC -->
+                <mxCell id="vpc" value="VPC: vdbbench-dev-vpc-benchmark (10.0.0.0/16)" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=13;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="40" width="1350" height="1100" as="geometry"/>
+                </mxCell>
+                <!-- Private Isolated Subnets -->
+                <mxCell id="subnets" value="Private Isolated Subnets (2 AZ)" style="swimlane;startSize=25;fillColor=#F1F8E9;strokeColor=#558B2F;fontStyle=1;fontSize=11;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="vpc">
+                    <mxGeometry x="30" y="50" width="1290" height="1020" as="geometry"/>
+                </mxCell>
+                <!-- Lambda SG -->
+                <mxCell id="lambda-sg" value="Lambda SG: vdbbench-dev-sg-lambda" style="swimlane;startSize=22;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="50" width="310" height="400" as="geometry"/>
+                </mxCell>
+                <!-- Lambda: vector-verify -->
+                <mxCell id="lambda" value="Lambda&#xa;vector-verify&#xa;Python 3.13 / 256MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+                    <mxGeometry x="115" y="45" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Lambda: search-test -->
+                <mxCell id="lambda-search" value="Lambda&#xa;search-test&#xa;Python 3.13 / 512MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+                    <mxGeometry x="115" y="225" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- ECS SG -->
+                <mxCell id="ecs-sg" value="ECS SG: vdbbench-dev-sg-ecs" style="swimlane;startSize=22;fillColor=#E8EAF6;strokeColor=#283593;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="500" width="310" height="210" as="geometry"/>
+                </mxCell>
+                <!-- ECS Fargate: bulk-ingest -->
+                <mxCell id="ecs-task" value="ECS Fargate&#xa;bulk-ingest&#xa;vCPU: 2 / Memory: 4GB" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="ecs-sg">
+                    <mxGeometry x="115" y="50" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Aurora SG -->
+                <mxCell id="aurora-sg" value="Aurora SG: vdbbench-dev-sg-aurora" style="swimlane;startSize=22;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="760" width="310" height="230" as="geometry"/>
+                </mxCell>
+                <!-- Aurora Cluster -->
+                <mxCell id="aurora" value="Aurora Serverless v2&#xa;vdbbench-dev-aurora-pgvector&#xa;PostgreSQL 16.4 + pgvector&#xa;ACU: 0.5 - 16" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;fillColor=#2E27AD;strokeColor=#2E27AD;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
+                    <mxGeometry x="115" y="50" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- VPC Endpoint SG -->
+                <mxCell id="vpce-sg" value="VPC Endpoint SG: vdbbench-dev-sg-vpce" style="swimlane;startSize=22;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="460" y="50" width="280" height="920" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: OpenSearch Serverless -->
+                <mxCell id="vpce-oss" value="VPC Endpoint&#xa;OpenSearch Serverless&#xa;(Interface / aoss)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="45" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: S3 Vectors -->
+                <mxCell id="vpce-s3v" value="VPC Endpoint&#xa;S3 Vectors&#xa;(Interface / s3vectors)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="185" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: ECR API -->
+                <mxCell id="vpce-ecr-api" value="VPC Endpoint&#xa;ECR API&#xa;(Interface)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="325" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: ECR Docker -->
+                <mxCell id="vpce-ecr-dkr" value="VPC Endpoint&#xa;ECR Docker&#xa;(Interface)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="465" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- S3 Gateway Endpoint -->
+                <mxCell id="s3gw" value="S3 Gateway Endpoint&#xa;(Route Table)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;fillColor=#3F8624;strokeColor=#3F8624;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="subnets">
+                    <mxGeometry x="870" y="700" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- External: OpenSearch Serverless -->
+                <mxCell id="opensearch" value="OpenSearch Serverless&#xa;vdbbench-dev-oss-vector&#xa;VECTORSEARCH&#xa;HNSW / nmslib / cosinesimil" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.opensearch_service;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="430" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- External: S3 Vectors -->
+                <mxCell id="s3vectors" value="Amazon S3 Vectors&#xa;vdbbench-dev-s3vectors-benchmark&#xa;Index: embeddings&#xa;dim: 1536 / cosine / float32" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;fillColor=#3F8624;strokeColor=#3F8624;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="580" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- External: ECR -->
+                <mxCell id="ecr-service" value="Amazon ECR" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecr;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="750" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- External: S3 (ECR Image Layers) -->
+                <mxCell id="s3-service" value="Amazon S3&#xa;(ECR Image Layers)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;fillColor=#3F8624;strokeColor=#3F8624;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="900" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to Aurora -->
+                <mxCell id="e-lv-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="470"/>
+                            <mxPoint x="15" y="470"/>
+                            <mxPoint x="15" y="870"/>
+                            <mxPoint x="175" y="870"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: Lambda(search) to Aurora -->
+                <mxCell id="e-ls-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="470"/>
+                            <mxPoint x="10" y="470"/>
+                            <mxPoint x="10" y="875"/>
+                            <mxPoint x="175" y="875"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: ECS to Aurora -->
+                <mxCell id="e-ecs-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to VPC EP OSS -->
+                <mxCell id="e-lv-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to VPC EP S3V -->
+                <mxCell id="e-lv-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(search) to VPC EP OSS -->
+                <mxCell id="e-ls-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(search) to VPC EP S3V -->
+                <mxCell id="e-ls-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP OSS -->
+                <mxCell id="e-ecs-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP S3V -->
+                <mxCell id="e-ecs-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP ECR API -->
+                <mxCell id="e-ecs-ecr-api" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-ecr-api" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="400" y="610"/>
+                            <mxPoint x="400" y="680"/>
+                            <mxPoint x="570" y="680"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP ECR Docker -->
+                <mxCell id="e-ecs-ecr-dkr" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-ecr-dkr" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="410" y="610"/>
+                            <mxPoint x="410" y="820"/>
+                            <mxPoint x="570" y="820"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: ECS to S3 Gateway -->
+                <mxCell id="e-ecs-s3gw" value="S3 Gateway" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#3F8624;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="s3gw" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="420" y="610"/>
+                            <mxPoint x="420" y="725"/>
+                            <mxPoint x="870" y="725"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- PrivateLink edges: VPC EP to external services -->
+                <mxCell id="e-vpce-sm-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#DD344C;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-sm" target="sm-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-cw-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#E7157B;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-cw" target="cloudwatch" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-oss-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#8C4FFF;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-oss" target="opensearch" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-s3v-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#3F8624;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-s3v" target="s3vectors" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-ecr-api-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#ED7100;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-ecr-api" target="ecr-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-ecr-dkr-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#ED7100;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-ecr-dkr" target="ecr-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-s3gw-s3svc" value="Gateway Endpoint" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#3F8624;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="s3gw" target="s3-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="S4WpyaTQYpXeu6UHRSNX" name="Page-1">
+        <mxGraphModel dx="1800" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1200" math="0" shadow="0" adaptiveColors="auto">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <!-- VPC -->
+                <mxCell id="vpc" value="VPC: vdbbench-dev-vpc-benchmark (10.0.0.0/16)" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=13;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="40" width="1350" height="1100" as="geometry"/>
+                </mxCell>
+                <!-- Private Isolated Subnets -->
+                <mxCell id="subnets" value="Private Isolated Subnets (2 AZ)" style="swimlane;startSize=25;fillColor=#F1F8E9;strokeColor=#558B2F;fontStyle=1;fontSize=11;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="vpc">
+                    <mxGeometry x="30" y="50" width="1290" height="1020" as="geometry"/>
+                </mxCell>
+                <!-- Lambda SG -->
+                <mxCell id="lambda-sg" value="Lambda SG: vdbbench-dev-sg-lambda" style="swimlane;startSize=22;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="50" width="310" height="400" as="geometry"/>
+                </mxCell>
+                <!-- Lambda: vector-verify -->
+                <mxCell id="lambda" value="Lambda&#xa;vector-verify&#xa;Python 3.13 / 256MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+                    <mxGeometry x="115" y="45" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Lambda: search-test -->
+                <mxCell id="lambda-search" value="Lambda&#xa;search-test&#xa;Python 3.13 / 512MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+                    <mxGeometry x="115" y="225" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- ECS SG -->
+                <mxCell id="ecs-sg" value="ECS SG: vdbbench-dev-sg-ecs" style="swimlane;startSize=22;fillColor=#E8EAF6;strokeColor=#283593;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="500" width="310" height="210" as="geometry"/>
+                </mxCell>
+                <!-- ECS Fargate: bulk-ingest -->
+                <mxCell id="ecs-task" value="ECS Fargate&#xa;bulk-ingest&#xa;vCPU: 2 / Memory: 4GB" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="ecs-sg">
+                    <mxGeometry x="115" y="50" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Aurora SG -->
+                <mxCell id="aurora-sg" value="Aurora SG: vdbbench-dev-sg-aurora" style="swimlane;startSize=22;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="760" width="310" height="230" as="geometry"/>
+                </mxCell>
+                <!-- Aurora Cluster -->
+                <mxCell id="aurora" value="Aurora Serverless v2&#xa;vdbbench-dev-aurora-pgvector&#xa;PostgreSQL 16.4 + pgvector&#xa;ACU: 0.5 - 16" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;fillColor=#2E27AD;strokeColor=#2E27AD;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
+                    <mxGeometry x="115" y="50" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- VPC Endpoint SG -->
+                <mxCell id="vpce-sg" value="VPC Endpoint SG: vdbbench-dev-sg-vpce" style="swimlane;startSize=22;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="460" y="50" width="280" height="640" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: OpenSearch Serverless -->
+                <mxCell id="vpce-oss" value="VPC Endpoint&#xa;OpenSearch Serverless&#xa;(Interface / aoss)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="45" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: S3 Vectors -->
+                <mxCell id="vpce-s3v" value="VPC Endpoint&#xa;S3 Vectors&#xa;(Interface / s3vectors)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="185" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- External: OpenSearch Serverless -->
+                <mxCell id="opensearch" value="OpenSearch Serverless&#xa;vdbbench-dev-oss-vector&#xa;VECTORSEARCH&#xa;HNSW / nmslib / cosinesimil" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.opensearch_service;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="180" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- External: S3 Vectors -->
+                <mxCell id="s3vectors" value="Amazon S3 Vectors&#xa;vdbbench-dev-s3vectors-benchmark&#xa;Index: embeddings&#xa;dim: 1536 / cosine / float32" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;fillColor=#3F8624;strokeColor=#3F8624;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="350" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to Aurora -->
+                <mxCell id="e-lv-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="470"/>
+                            <mxPoint x="15" y="470"/>
+                            <mxPoint x="15" y="870"/>
+                            <mxPoint x="175" y="870"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: Lambda(search) to Aurora -->
+                <mxCell id="e-ls-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="470"/>
+                            <mxPoint x="10" y="470"/>
+                            <mxPoint x="10" y="875"/>
+                            <mxPoint x="175" y="875"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: ECS to Aurora -->
+                <mxCell id="e-ecs-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to VPC EP OSS -->
+                <mxCell id="e-lv-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to VPC EP S3V -->
+                <mxCell id="e-lv-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(search) to VPC EP OSS -->
+                <mxCell id="e-ls-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(search) to VPC EP S3V -->
+                <mxCell id="e-ls-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP OSS -->
+                <mxCell id="e-ecs-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP S3V -->
+                <mxCell id="e-ecs-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- PrivateLink edges: VPC EP to external services -->
+                <mxCell id="e-vpce-oss-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#8C4FFF;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-oss" target="opensearch" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-s3v-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#3F8624;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-s3v" target="s3vectors" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-ecr-api-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#ED7100;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-ecr-api" target="ecr-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-ecr-dkr-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#ED7100;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-ecr-dkr" target="ecr-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-s3gw-s3svc" value="Gateway Endpoint" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#3F8624;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="s3gw" target="s3-service" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="HOrOBtvPUwauFOfmWdKh" name="Page-1">
+        <mxGraphModel dx="1800" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1200" math="0" shadow="0" adaptiveColors="auto">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <!-- VPC -->
+                <mxCell id="vpc" value="VPC: vdbbench-dev-vpc-benchmark (10.0.0.0/16)" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2E7D32;fontStyle=1;fontSize=13;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="1">
+                    <mxGeometry x="40" y="40" width="1350" height="1100" as="geometry"/>
+                </mxCell>
+                <!-- Private Isolated Subnets -->
+                <mxCell id="subnets" value="Private Isolated Subnets (2 AZ)" style="swimlane;startSize=25;fillColor=#F1F8E9;strokeColor=#558B2F;fontStyle=1;fontSize=11;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="vpc">
+                    <mxGeometry x="30" y="50" width="1290" height="1020" as="geometry"/>
+                </mxCell>
+                <!-- Lambda SG -->
+                <mxCell id="lambda-sg" value="Lambda SG: vdbbench-dev-sg-lambda" style="swimlane;startSize=22;fillColor=#FFF3E0;strokeColor=#E65100;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="50" width="310" height="400" as="geometry"/>
+                </mxCell>
+                <!-- Lambda: vector-verify -->
+                <mxCell id="lambda" value="Lambda&#xa;vector-verify&#xa;Python 3.13 / 256MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+                    <mxGeometry x="115" y="45" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Lambda: search-test -->
+                <mxCell id="lambda-search" value="Lambda&#xa;search-test&#xa;Python 3.13 / 512MB / 300s" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="lambda-sg">
+                    <mxGeometry x="115" y="225" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- ECS SG -->
+                <mxCell id="ecs-sg" value="ECS SG: vdbbench-dev-sg-ecs" style="swimlane;startSize=22;fillColor=#E8EAF6;strokeColor=#283593;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="500" width="310" height="210" as="geometry"/>
+                </mxCell>
+                <!-- ECS Fargate: bulk-ingest -->
+                <mxCell id="ecs-task" value="ECS Fargate&#xa;bulk-ingest&#xa;vCPU: 2 / Memory: 4GB" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;fillColor=#ED7100;strokeColor=#ED7100;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="ecs-sg">
+                    <mxGeometry x="115" y="50" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Aurora SG -->
+                <mxCell id="aurora-sg" value="Aurora SG: vdbbench-dev-sg-aurora" style="swimlane;startSize=22;fillColor=#E3F2FD;strokeColor=#1565C0;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="30" y="760" width="310" height="230" as="geometry"/>
+                </mxCell>
+                <!-- Aurora Cluster -->
+                <mxCell id="aurora" value="Aurora Serverless v2&#xa;vdbbench-dev-aurora-pgvector&#xa;PostgreSQL 16.4 + pgvector&#xa;ACU: 0.5 - 16" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.aurora;fillColor=#2E27AD;strokeColor=#2E27AD;fontColor=default;fontStyle=0;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="aurora-sg">
+                    <mxGeometry x="115" y="50" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- VPC Endpoint SG -->
+                <mxCell id="vpce-sg" value="VPC Endpoint SG: vdbbench-dev-sg-vpce" style="swimlane;startSize=22;fillColor=#F3E5F5;strokeColor=#6A1B9A;fontStyle=0;fontSize=10;dashed=1;dashPattern=5 5;rounded=1;arcSize=5;swimlaneLine=0;container=1;collapsible=0;pointerEvents=0;" vertex="1" parent="subnets">
+                    <mxGeometry x="460" y="50" width="280" height="340" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: OpenSearch Serverless -->
+                <mxCell id="vpce-oss" value="VPC Endpoint&#xa;OpenSearch Serverless&#xa;(Interface / aoss)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="45" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- VPC EP: S3 Vectors -->
+                <mxCell id="vpce-s3v" value="VPC Endpoint&#xa;S3 Vectors&#xa;(Interface / s3vectors)" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.vpc_privatelink;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=0;fontSize=9;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="vpce-sg">
+                    <mxGeometry x="110" y="185" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <!-- External: OpenSearch Serverless -->
+                <mxCell id="opensearch" value="OpenSearch Serverless&#xa;vdbbench-dev-oss-vector&#xa;VECTORSEARCH&#xa;HNSW / nmslib / cosinesimil" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.opensearch_service;fillColor=#8C4FFF;strokeColor=#8C4FFF;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="180" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- External: S3 Vectors -->
+                <mxCell id="s3vectors" value="Amazon S3 Vectors&#xa;vdbbench-dev-s3vectors-benchmark&#xa;Index: embeddings&#xa;dim: 1536 / cosine / float32" style="shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;fillColor=#3F8624;strokeColor=#3F8624;fontColor=default;fontStyle=1;fontSize=10;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;spacingTop=5;" vertex="1" parent="1">
+                    <mxGeometry x="1520" y="350" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to Aurora -->
+                <mxCell id="e-lv-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="470"/>
+                            <mxPoint x="15" y="470"/>
+                            <mxPoint x="15" y="870"/>
+                            <mxPoint x="175" y="870"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: Lambda(search) to Aurora -->
+                <mxCell id="e-ls-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="175" y="470"/>
+                            <mxPoint x="10" y="470"/>
+                            <mxPoint x="10" y="875"/>
+                            <mxPoint x="175" y="875"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <!-- Edge: ECS to Aurora -->
+                <mxCell id="e-ecs-aurora" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#1565C0;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="aurora" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to VPC EP OSS -->
+                <mxCell id="e-lv-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(verify) to VPC EP S3V -->
+                <mxCell id="e-lv-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(search) to VPC EP OSS -->
+                <mxCell id="e-ls-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: Lambda(search) to VPC EP S3V -->
+                <mxCell id="e-ls-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="lambda-search" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP OSS -->
+                <mxCell id="e-ecs-oss" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-oss" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- Edge: ECS to VPC EP S3V -->
+                <mxCell id="e-ecs-s3v" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6A1B9A;fontColor=default;fontSize=10;fontStyle=0;" edge="1" source="ecs-task" target="vpce-s3v" parent="subnets">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <!-- PrivateLink edges: VPC EP to external services -->
+                <mxCell id="e-vpce-oss-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#8C4FFF;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-oss" target="opensearch" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e-vpce-s3v-svc" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;strokeColor=#3F8624;fontColor=default;fontSize=10;fontStyle=0;dashed=1;" edge="1" source="vpce-s3v" target="s3vectors" parent="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
