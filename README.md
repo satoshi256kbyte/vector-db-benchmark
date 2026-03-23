@@ -433,6 +433,65 @@ resp = s3v_client.list_vectors(
     vectorBucketName=bucket_name, indexName=index_name,
 )
 count = len(resp.get("vectors", []))
+```
+
+## ベンチマーク結果
+
+### 条件
+
+| 項目 | 値 |
+|---|---|
+| リージョン | ap-northeast-1 |
+| ベクトル次元数 | 1536 |
+| 投入レコード数 | 100,000 |
+| 検索クエリ数 | 100 |
+| top_k | 10 |
+| Aurora Min ACU | 0.5 |
+| Aurora Max ACU | 10 |
+| OpenSearch Max IndexingOCU | 10 |
+| OpenSearch Max SearchOCU | 10 |
+| OpenSearch Standby Replicas | DISABLED |
+
+### データ投入（ECS Fargate 経由）
+
+| DB | 投入時間 | インデックス作成時間 | 合計時間 | 備考 |
+|---|---|---|---|---|
+| Aurora pgvector | 560秒（約9.3分） | 714秒（約11.9分） | 約21.2分 | HNSW インデックス作成含む |
+| OpenSearch Serverless | 527秒（約8.8分） | - | 約8.8分 | インデックス自動管理 |
+| S3 Vectors | 559秒（約9.3分） | - | 約9.3分 | インデックス自動管理 |
+
+単純処理時間でいうとOpenSearchが一番早く、Auroraが一番長いという結果になりました。
+Auroraはデータ投入とインデックス作成の2段階にしていますが、これを同時にやるともっと長いかもしれません。
+
+OpenSearchとS3 Vectorsについては、データ投入が終わってもインデックス作成は非同期処理のようで、投入件数とプログラムから認識できる件数が一致するまで十数分の遅延がありました。
+実運用においても注意が必要と思います。
+
+#### ACU・OCUの推移（CloudWatch、5分間隔 Maximum）
+
+![ACU・OCUの推移](images/acu_ocu_1.png)
+
+イメージ通り、データ投入中なACU/OCUともに上昇しています。
+OCUはデータ投入時においてはインデックスOCUのみ上昇するようです。
+
+### 検索ベンチマーク（Lambda 経由、100クエリ）
+
+AuroraのACUはコールドスタートを回避するため、ベンチマーク実行前に最小ACUを0.5に変更しています。
+
+| DB | 平均値 (ms) | 中央値 (ms) | P95 (ms) | P99 (ms) | スループット (queries/sec) |
+|---|---|---|---|---|---|
+| Aurora pgvector | 13.3 | 12.5 | 18.7 | 24.1 | 75.0 |
+| OpenSearch Serverless | 86.8 | 82.4 | 120.3 | 145.2 | 11.5 |
+| S3 Vectors | 76.3 | 72.1 | 105.8 | 128.4 | 13.1 |
+
+今回検証したデータ量においてはAuroraが一番速いという結果になりました。
+データ量がもっと増えればOpenSearchが有利になると思われますが、この件数ではOpenSearch Serverlessはその構成の複雑さによるオーバーヘッドにより他に劣ってしまうのだと考えます。
+小中規模のベクトルデータベースにおいてはAuroraが最適だろうと考えます。
+
+#### ACU・OCUの推移（CloudWatch、5分間隔 Maximum）
+
+![ACU・OCUの推移](images/acu_ocu_2.png)
+
+今回の範疇においてはAuroraは検索に伴いACUが上昇していますが、OCUは動きは見られませんでした。
 
 ## ディレクトリ構成
 
