@@ -226,12 +226,15 @@ class S3VectorsIngester:
         )
         return end_index - start_index
 
-    def ingest_all(self, record_count: int, batch_size: int = 50) -> int:
+    def ingest_all(self, record_count: int, batch_size: int = 200) -> int:
         """全レコードをバッチ単位で S3 Vectors に投入する.
 
         S3 Vectors の PutVectors API は1回あたり最大500件かつリクエストペイロード
-        最大 20MiB の制限がある。1536次元ベクトルの場合、JSON シリアライズ後の
-        サイズが大きいため、デフォルトバッチサイズは50件に設定。
+        最大 20MiB の制限がある。1536次元 float32 ベクトル（約6KB/件）の場合、
+        200件でも約1.3MB 程度であり API 制限の範囲内のため、デフォルトバッチサイズ
+        を200件に設定。旧デフォルト（50件）では 100,000件投入時に 2,000回の API
+        コールが必要となり処理時間が長大化するため、200件に増加させて API コール
+        回数を 1/4 に削減した。
 
         Args:
             record_count: 投入するレコード総数
