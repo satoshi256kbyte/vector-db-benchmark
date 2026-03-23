@@ -385,13 +385,36 @@ run_ecs_task() {
     log_info "ECS データ投入タスクを起動しました: ${TASK_ARN}"
     log_info "ECS タスクの完了を待機中..."
 
-    aws ecs wait tasks-stopped \
-        --cluster "$ECS_CLUSTER" \
-        --tasks "$TASK_ARN" \
-        --region "$REGION" || {
-        log_error "ECS タスクの待機に失敗しました: ${TASK_ARN}"
+    # カスタムポーリングループ（aws ecs wait tasks-stopped のデフォルト10分制限を回避）
+    local MAX_WAIT_SECONDS=3600
+    local POLL_INTERVAL=30
+    local elapsed=0
+    local task_status=""
+
+    while [[ $elapsed -lt $MAX_WAIT_SECONDS ]]; do
+        task_status=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].lastStatus' --output text \
+            --region "$REGION" 2>/dev/null) || {
+            log_error "ECS タスクのステータス取得に失敗しました: ${TASK_ARN}"
+            return 1
+        }
+
+        log_info "ECS タスクステータス: ${task_status}（経過時間: ${elapsed}秒 / 最大: ${MAX_WAIT_SECONDS}秒）"
+
+        if [[ "$task_status" == "STOPPED" ]]; then
+            break
+        fi
+
+        sleep "$POLL_INTERVAL"
+        elapsed=$((elapsed + POLL_INTERVAL))
+    done
+
+    if [[ "$task_status" != "STOPPED" ]]; then
+        log_error "ECS タスクの待機がタイムアウトしました（${MAX_WAIT_SECONDS}秒経過）: ${TASK_ARN}"
         return 1
-    }
+    fi
 
     END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
