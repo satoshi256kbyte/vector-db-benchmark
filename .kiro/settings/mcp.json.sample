@@ -1,19 +1,5 @@
 {
   "mcpServers": {
-    "awslabs-core-mcp-server": {
-      "command": "uvx",
-      "args": [
-        "awslabs.core-mcp-server@latest"
-      ],
-      "env": {
-        "FASTMCP_LOG_LEVEL": "ERROR",
-        "aws-foundation": "true",
-        "solutions-architect": "true"
-        // Add other roles as needed
-      },
-      "autoApprove": [],
-      "disabled": false
-    },
     "aws-mcp": {
       "command": "uvx",
       "timeout": 100000,
@@ -23,26 +9,6 @@
         "https://aws-mcp.us-east-1.api.aws/mcp",
         "--metadata", "AWS_REGION=ap-northeast-1"
       ]
-    },
-    "awslabs.cloudtrail-mcp-server": {
-      "autoApprove": [],
-      "disabled": false,
-      "command": "uvx",
-      "args": [
-        "awslabs.cloudtrail-mcp-server@latest"
-      ],
-      "env": {
-        "AWS_PROFILE": "[The AWS Profile Name to use for AWS access]",
-        "FASTMCP_LOG_LEVEL": "ERROR"
-      },
-      "transportType": "stdio"
-    },
-    "iam-policy-autopilot": {
-      "command": "uvx",
-      "args": ["iam-policy-autopilot", "mcp-server"],
-      "env": {},
-      "disabled": false,
-      "autoApprove": []
     },
     "github": {
       "command": "npx",
