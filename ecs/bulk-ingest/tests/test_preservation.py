@@ -305,3 +305,104 @@ class TestCountOperationPreservation:
         assert "RECORD_COUNT_RESULT:42" in output, (
             f"テーブル存在時に RECORD_COUNT_RESULT:42 が出力されるべき（実際: {output!r}）"
         )
+
+
+# ===========================================================================
+# Property 5: _run_count_operation() S3 Vectors ページネーション対応
+# ===========================================================================
+
+
+class TestS3VectorsCountPagination:
+    """S3 Vectors の count が paginator で全ページを走査すること."""
+
+    def test_count_single_page(self) -> None:
+        """1ページのみの場合に正しい件数を返すこと."""
+        from main import _run_count_operation
+
+        mock_client = MagicMock()
+        mock_paginator = MagicMock()
+        mock_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {"vectors": [{"key": f"v{i}"} for i in range(100)]},
+        ]
+
+        captured_output = StringIO()
+
+        with (
+            patch("main._get_s3vectors_client", return_value=mock_client),
+            patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"}),
+            patch("sys.stdout", captured_output),
+        ):
+            _run_count_operation("s3vectors")
+
+        output = captured_output.getvalue()
+        assert "RECORD_COUNT_RESULT:100" in output
+
+    def test_count_multiple_pages(self) -> None:
+        """複数ページにまたがる場合に全件カウントされること."""
+        from main import _run_count_operation
+
+        mock_client = MagicMock()
+        mock_paginator = MagicMock()
+        mock_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {"vectors": [{"key": f"v{i}"} for i in range(500)]},
+            {"vectors": [{"key": f"v{i}"} for i in range(500)]},
+            {"vectors": [{"key": f"v{i}"} for i in range(123)]},
+        ]
+
+        captured_output = StringIO()
+
+        with (
+            patch("main._get_s3vectors_client", return_value=mock_client),
+            patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"}),
+            patch("sys.stdout", captured_output),
+        ):
+            _run_count_operation("s3vectors")
+
+        output = captured_output.getvalue()
+        assert "RECORD_COUNT_RESULT:1123" in output
+
+    def test_count_empty_index(self) -> None:
+        """空のインデックスで count=0 を返すこと."""
+        from main import _run_count_operation
+
+        mock_client = MagicMock()
+        mock_paginator = MagicMock()
+        mock_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.return_value = [
+            {"vectors": []},
+        ]
+
+        captured_output = StringIO()
+
+        with (
+            patch("main._get_s3vectors_client", return_value=mock_client),
+            patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"}),
+            patch("sys.stdout", captured_output),
+        ):
+            _run_count_operation("s3vectors")
+
+        output = captured_output.getvalue()
+        assert "RECORD_COUNT_RESULT:0" in output
+
+    def test_count_index_not_found(self) -> None:
+        """インデックス未作成時に count=0 を返すこと."""
+        from main import _run_count_operation
+
+        mock_client = MagicMock()
+        mock_paginator = MagicMock()
+        mock_client.get_paginator.return_value = mock_paginator
+        mock_paginator.paginate.side_effect = Exception("NoSuchIndex: index not found")
+
+        captured_output = StringIO()
+
+        with (
+            patch("main._get_s3vectors_client", return_value=mock_client),
+            patch.dict("os.environ", {"S3VECTORS_BUCKET_NAME": "test-bucket", "S3VECTORS_INDEX_NAME": "test-index"}),
+            patch("sys.stdout", captured_output),
+        ):
+            _run_count_operation("s3vectors")
+
+        output = captured_output.getvalue()
+        assert "RECORD_COUNT_RESULT:0" in output

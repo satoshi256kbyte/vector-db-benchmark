@@ -427,11 +427,14 @@ def _run_count_operation(target_db: str) -> None:
             s3v_client = _get_s3vectors_client()
             bucket_name = os.environ.get("S3VECTORS_BUCKET_NAME", "")
             index_name = os.environ.get("S3VECTORS_INDEX_NAME", "")
-            resp = s3v_client.list_vectors(
+            paginator = s3v_client.get_paginator("list_vectors")
+            for page in paginator.paginate(
                 vectorBucketName=bucket_name,
                 indexName=index_name,
-            )
-            count = len(resp.get("vectors", []))
+                returnData=False,
+                returnMetadata=False,
+            ):
+                count += len(page.get("vectors", []))
         except Exception as exc:
             error_str = str(exc)
             if "NoSuchIndex" in error_str or "NoSuchVectorBucket" in error_str or "404" in error_str:

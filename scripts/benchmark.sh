@@ -1243,11 +1243,6 @@ run_benchmark_cycle() {
             log_info "${db_label} インデックス反映待機中（${wait_seconds}秒）..."
             sleep "$wait_seconds"
             ;;
-        s3vectors)
-            local wait_seconds=60
-            log_info "${db_label} 結果整合性の反映待機中（${wait_seconds}秒）..."
-            sleep "$wait_seconds"
-            ;;
     esac
 
     # --- Step 6: 投入後レコード数取得 ---
