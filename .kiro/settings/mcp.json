@@ -1,0 +1,86 @@
+{
+  "mcpServers": {
+    "iam-policy-autopilot": {
+      "command": "uvx",
+      "args": ["iam-policy-autopilot", "mcp-server"],
+      "env": {
+        "AWS_REGION": "ap-northeast-1"
+      },
+      "disabled": false,
+      "autoApprove": []
+    },
+    "aws-mcp": {
+      "command": "uvx",
+      "timeout": 100000,
+      "transport": "stdio",
+      "args": [
+        "mcp-proxy-for-aws@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--metadata",
+        "AWS_REGION=ap-northeast-1"
+      ],
+      "autoApprove": []
+    },
+    "github": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "ghcr.io/github/github-mcp-server"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "drawio": {
+      "command": "npx",
+      "args": ["-y", "@drawio/mcp"],
+      "autoApprove": ["open_drawio_xml"]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp",
+        "--api-key",
+        "${CONTEXT7_API_KEY}"
+      ],
+      "env": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      },
+      "disabled": false,
+      "autoApprove": ["resolve-library-id", "query-docs"]
+    }
+  },
+  "powers": {
+    "mcpServers": {
+      "power-amazon-aurora-postgresql-awslabs.postgres-mcp-server": {
+        "args": ["awslabs.postgres-mcp-server@latest"],
+        "command": "uvx"
+      },
+      "power-aws-observability-awslabs.cloudwatch-applicationsignals-mcp-server": {
+        "command": "uvx",
+        "args": ["--with", "awscrt", "awslabs.cloudwatch-applicationsignals-mcp-server@latest"],
+        "env": {
+          "AWS_PROFILE": "default",
+          "AWS_REGION": "ap-northeast-1",
+          "FASTMCP_LOG_LEVEL": "ERROR"
+        },
+        "disabled": true
+      },
+      "power-aws-infrastructure-as-code-awslabs.aws-iac-mcp-server": {
+        "command": "uvx",
+        "args": ["awslabs.aws-iac-mcp-server@latest"],
+        "env": {
+          "AWS_PROFILE": "private",
+          "FASTMCP_LOG_LEVEL": "ERROR"
+        },
+        "disabled": false,
+        "autoApprove": ["search_cdk_samples_and_constructs", "read_iac_documentation_page"]
+      }
+    }
+  }
+}
