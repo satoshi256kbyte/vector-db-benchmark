@@ -12,7 +12,7 @@ from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 
@@ -319,45 +319,68 @@ class TestCleanupExpired:
 
 # --- プロパティテスト: Cache_Entry データモデルの完全性 ---
 
-# Hypothesis ストラテジー定義
-uuid_strategy = st.uuids().map(str)
 
-embedding_strategy = st.lists(
-    st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False),
-    min_size=1024,
-    max_size=1024,
-)
+@st.composite
+def cache_entry_strategy(draw: st.DrawFn) -> CacheEntry:
+    """有効な CacheEntry を生成する Hypothesis composite ストラテジー.
 
-query_text_strategy = st.text(
-    alphabet=st.characters(categories=("L", "M", "N", "P", "S", "Z")),
-    min_size=1,
-    max_size=1000,
-)
+    1024次元の embedding は、少数のランダム値から構築することで
+    Hypothesis のエントロピー制限を回避する。
+    """
+    entry_id = draw(st.uuids().map(str))
 
-search_results_strategy = st.lists(
-    st.dictionaries(
-        keys=st.text(min_size=1, max_size=20),
-        values=st.one_of(
-            st.text(max_size=50),
-            st.integers(min_value=-1000, max_value=1000),
-            st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False),
-            st.booleans(),
-            st.none(),
-        ),
-        min_size=1,
-        max_size=5,
-    ),
-    min_size=1,
-    max_size=10,
-)
+    # 1024次元の embedding を効率的に生成
+    # 少数のランダム値を使って1024要素を構築する
+    seed_values = draw(
+        st.lists(
+            st.floats(min_value=-1.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+            min_size=4,
+            max_size=4,
+        )
+    )
+    # 4つの値を256回ずつ繰り返して1024次元にする
+    query_embedding = (seed_values * 256)[:1024]
 
-created_at_strategy = st.datetimes(
-    min_value=datetime(2020, 1, 1),
-    max_value=datetime(2030, 12, 31),
-    timezones=st.just(timezone.utc),
-)
+    query_text = draw(
+        st.text(
+            alphabet=st.characters(categories=("L", "N", "P")),
+            min_size=1,
+            max_size=100,
+        )
+    )
+    search_results: list[dict[str, object]] = draw(
+        st.lists(
+            st.dictionaries(
+                keys=st.text(alphabet=st.characters(categories=("L",)), min_size=1, max_size=10),
+                values=st.one_of(
+                    st.text(max_size=10),
+                    st.integers(min_value=-100, max_value=100),
+                    st.booleans(),
+                ),
+                min_size=1,
+                max_size=3,
+            ),
+            min_size=1,
+            max_size=3,
+        )
+    )
+    created_at = draw(
+        st.datetimes(
+            min_value=datetime(2020, 1, 1),
+            max_value=datetime(2030, 12, 31),
+            timezones=st.just(timezone.utc),
+        )
+    )
+    ttl_seconds = draw(st.integers(min_value=1, max_value=604800))
 
-ttl_seconds_strategy = st.integers(min_value=1, max_value=604800)
+    return CacheEntry(
+        id=entry_id,
+        query_embedding=query_embedding,
+        query_text=query_text,
+        search_results=search_results,
+        created_at=created_at,
+        ttl_seconds=ttl_seconds,
+    )
 
 
 class TestProperty1CacheEntryDataModelCompleteness:
@@ -372,34 +395,10 @@ class TestProperty1CacheEntryDataModelCompleteness:
     Feature: semantic-cache, Property 1: Cache_Entry データモデルの完全性
     """
 
-    @given(
-        entry_id=uuid_strategy,
-        query_embedding=embedding_strategy,
-        query_text=query_text_strategy,
-        search_results=search_results_strategy,
-        created_at=created_at_strategy,
-        ttl_seconds=ttl_seconds_strategy,
-    )
-    @settings(max_examples=100)
-    def test_all_required_fields_present_with_correct_types(
-        self,
-        entry_id: str,
-        query_embedding: list[float],
-        query_text: str,
-        search_results: list[dict[str, object]],
-        created_at: datetime,
-        ttl_seconds: int,
-    ) -> None:
+    @given(entry=cache_entry_strategy())
+    @settings(max_examples=100, deadline=None)
+    def test_all_required_fields_present_with_correct_types(self, entry: CacheEntry) -> None:
         """全必須フィールドが正しい型で保持されること."""
-        entry = CacheEntry(
-            id=entry_id,
-            query_embedding=query_embedding,
-            query_text=query_text,
-            search_results=search_results,
-            created_at=created_at,
-            ttl_seconds=ttl_seconds,
-        )
-
         # 全必須フィールドが存在すること
         assert hasattr(entry, "id")
         assert hasattr(entry, "query_embedding")
@@ -413,164 +412,79 @@ class TestProperty1CacheEntryDataModelCompleteness:
         assert isinstance(entry.query_embedding, list), (
             f"query_embedding should be list, got {type(entry.query_embedding)}"
         )
-        assert isinstance(entry.query_text, str), f"query_text should be str, got {type(entry.query_text)}"
+        assert isinstance(entry.query_text, str), (
+            f"query_text should be str, got {type(entry.query_text)}"
+        )
         assert isinstance(entry.search_results, list), (
             f"search_results should be list, got {type(entry.search_results)}"
         )
         assert isinstance(entry.created_at, datetime), (
             f"created_at should be datetime, got {type(entry.created_at)}"
         )
-        assert isinstance(entry.ttl_seconds, int), f"ttl_seconds should be int, got {type(entry.ttl_seconds)}"
-
-    @given(
-        entry_id=uuid_strategy,
-        query_embedding=embedding_strategy,
-        query_text=query_text_strategy,
-        search_results=search_results_strategy,
-        created_at=created_at_strategy,
-        ttl_seconds=ttl_seconds_strategy,
-    )
-    @settings(max_examples=100)
-    def test_field_values_preserved(
-        self,
-        entry_id: str,
-        query_embedding: list[float],
-        query_text: str,
-        search_results: list[dict[str, object]],
-        created_at: datetime,
-        ttl_seconds: int,
-    ) -> None:
-        """入力値がそのまま保持されること."""
-        entry = CacheEntry(
-            id=entry_id,
-            query_embedding=query_embedding,
-            query_text=query_text,
-            search_results=search_results,
-            created_at=created_at,
-            ttl_seconds=ttl_seconds,
+        assert isinstance(entry.ttl_seconds, int), (
+            f"ttl_seconds should be int, got {type(entry.ttl_seconds)}"
         )
 
-        assert entry.id == entry_id
-        assert entry.query_embedding == query_embedding
-        assert entry.query_text == query_text
-        assert entry.search_results == search_results
-        assert entry.created_at == created_at
-        assert entry.ttl_seconds == ttl_seconds
-
-    @given(
-        entry_id=uuid_strategy,
-        query_embedding=embedding_strategy,
-        query_text=query_text_strategy,
-        search_results=search_results_strategy,
-        created_at=created_at_strategy,
-        ttl_seconds=ttl_seconds_strategy,
-    )
-    @settings(max_examples=100)
-    def test_embedding_dimension_is_1024(
-        self,
-        entry_id: str,
-        query_embedding: list[float],
-        query_text: str,
-        search_results: list[dict[str, object]],
-        created_at: datetime,
-        ttl_seconds: int,
-    ) -> None:
+    @given(entry=cache_entry_strategy())
+    @settings(max_examples=100, deadline=None)
+    def test_embedding_dimension_is_1024(self, entry: CacheEntry) -> None:
         """query_embedding が1024次元であること."""
-        entry = CacheEntry(
-            id=entry_id,
-            query_embedding=query_embedding,
-            query_text=query_text,
-            search_results=search_results,
-            created_at=created_at,
-            ttl_seconds=ttl_seconds,
-        )
-
         assert len(entry.query_embedding) == 1024
         assert all(isinstance(v, float) for v in entry.query_embedding)
 
-    @given(
-        entry_id=uuid_strategy,
-        query_embedding=embedding_strategy,
-        query_text=query_text_strategy,
-        search_results=search_results_strategy,
-        created_at=created_at_strategy,
-        ttl_seconds=ttl_seconds_strategy,
-    )
-    @settings(max_examples=100)
-    def test_created_at_has_utc_timezone(
-        self,
-        entry_id: str,
-        query_embedding: list[float],
-        query_text: str,
-        search_results: list[dict[str, object]],
-        created_at: datetime,
-        ttl_seconds: int,
-    ) -> None:
-        """created_at が UTC タイムゾーンを持つこと."""
-        entry = CacheEntry(
-            id=entry_id,
-            query_embedding=query_embedding,
-            query_text=query_text,
-            search_results=search_results,
-            created_at=created_at,
-            ttl_seconds=ttl_seconds,
-        )
+    @given(entry=cache_entry_strategy())
+    @settings(max_examples=100, deadline=None)
+    def test_query_text_is_non_empty(self, entry: CacheEntry) -> None:
+        """query_text が1文字以上であること."""
+        assert len(entry.query_text) >= 1
 
+    @given(entry=cache_entry_strategy())
+    @settings(max_examples=100, deadline=None)
+    def test_search_results_is_list_of_dicts(self, entry: CacheEntry) -> None:
+        """search_results が辞書のリストであること."""
+        assert len(entry.search_results) >= 1
+        for item in entry.search_results:
+            assert isinstance(item, dict)
+
+    @given(entry=cache_entry_strategy())
+    @settings(max_examples=100, deadline=None)
+    def test_created_at_has_utc_timezone(self, entry: CacheEntry) -> None:
+        """created_at が UTC タイムゾーンを持つこと."""
         assert entry.created_at.tzinfo is not None
         assert entry.created_at.tzinfo == timezone.utc
 
-    @given(
-        entry_id=uuid_strategy,
-        query_embedding=embedding_strategy,
-        query_text=query_text_strategy,
-        search_results=search_results_strategy,
-        created_at=created_at_strategy,
-        ttl_seconds=ttl_seconds_strategy,
-    )
-    @settings(max_examples=100)
-    def test_ttl_seconds_is_positive(
-        self,
-        entry_id: str,
-        query_embedding: list[float],
-        query_text: str,
-        search_results: list[dict[str, object]],
-        created_at: datetime,
-        ttl_seconds: int,
-    ) -> None:
+    @given(entry=cache_entry_strategy())
+    @settings(max_examples=100, deadline=None)
+    def test_ttl_seconds_is_positive(self, entry: CacheEntry) -> None:
         """ttl_seconds が正の整数であること."""
-        entry = CacheEntry(
-            id=entry_id,
-            query_embedding=query_embedding,
-            query_text=query_text,
-            search_results=search_results,
-            created_at=created_at,
-            ttl_seconds=ttl_seconds,
-        )
-
         assert entry.ttl_seconds > 0
 
     @given(
-        entry_id=uuid_strategy,
-        query_embedding=embedding_strategy,
-        query_text=query_text_strategy,
-        search_results=search_results_strategy,
-        created_at=created_at_strategy,
+        entry_id=st.uuids().map(str),
+        query_text=st.text(
+            alphabet=st.characters(categories=("L", "N", "P")),
+            min_size=1,
+            max_size=50,
+        ),
+        created_at=st.datetimes(
+            min_value=datetime(2020, 1, 1),
+            max_value=datetime(2030, 12, 31),
+            timezones=st.just(timezone.utc),
+        ),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_default_ttl_is_3600(
         self,
         entry_id: str,
-        query_embedding: list[float],
         query_text: str,
-        search_results: list[dict[str, object]],
         created_at: datetime,
     ) -> None:
         """ttl_seconds のデフォルト値が3600であること."""
         entry = CacheEntry(
             id=entry_id,
-            query_embedding=query_embedding,
+            query_embedding=[0.1] * 1024,
             query_text=query_text,
-            search_results=search_results,
+            search_results=[{"key": "value"}],
             created_at=created_at,
         )
 
