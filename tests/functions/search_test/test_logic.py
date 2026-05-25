@@ -364,6 +364,118 @@ class TestCalculateLatencyStatsEdgeCases:
 
 
 
+# --- 追加: Aurora のみ検索実行を確認するテスト (Task 1.4) ---
+
+run_search_test = _logic.run_search_test
+
+
+class TestAuroraOnlySearchExecution:
+    """Aurora のみ検索実行を確認するユニットテスト.
+
+    OpenSearch/S3 Vectors 関連コードがコメントアウトされた状態で、
+    run_search_test が Aurora pgvector のみ検索を実行し、
+    OpenSearch と S3 Vectors の結果を失敗扱い（success=False）として返却することを確認する。
+
+    **Validates: Requirements 1.1, 1.2, 1.3**
+    """
+
+    def test_opensearch_result_is_failure(self, monkeypatch: _pytest.MonkeyPatch) -> None:
+        """OpenSearch の検索結果が失敗扱い（success=False）であること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        monkeypatch.setattr(_logic, "_get_aurora_connection", lambda: mock_conn)
+        monkeypatch.setattr(_logic, "generate_query_vectors", lambda rc, sc: [[0.1] * 10 for _ in range(sc)])
+
+        response = run_search_test(search_count=3, top_k=5, record_count=100)
+
+        assert response.opensearch.success is False
+        assert response.opensearch.database == "opensearch"
+        assert response.opensearch.error_message is not None
+        assert "disabled" in response.opensearch.error_message.lower() or "comment" in response.opensearch.error_message.lower()
+
+    def test_s3vectors_result_is_failure(self, monkeypatch: _pytest.MonkeyPatch) -> None:
+        """S3 Vectors の検索結果が失敗扱い（success=False）であること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        monkeypatch.setattr(_logic, "_get_aurora_connection", lambda: mock_conn)
+        monkeypatch.setattr(_logic, "generate_query_vectors", lambda rc, sc: [[0.1] * 10 for _ in range(sc)])
+
+        response = run_search_test(search_count=3, top_k=5, record_count=100)
+
+        assert response.s3vectors.success is False
+        assert response.s3vectors.database == "s3vectors"
+        assert response.s3vectors.error_message is not None
+        assert "disabled" in response.s3vectors.error_message.lower() or "comment" in response.s3vectors.error_message.lower()
+
+    def test_aurora_search_is_executed(self, monkeypatch: _pytest.MonkeyPatch) -> None:
+        """Aurora pgvector の検索が実際に実行されること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        monkeypatch.setattr(_logic, "_get_aurora_connection", lambda: mock_conn)
+        monkeypatch.setattr(_logic, "generate_query_vectors", lambda rc, sc: [[0.1] * 10 for _ in range(sc)])
+
+        response = run_search_test(search_count=3, top_k=5, record_count=100)
+
+        assert response.aurora.success is True
+        assert response.aurora.database == "aurora_pgvector"
+        assert response.aurora.search_count == 3
+        assert response.aurora.top_k == 5
+        assert mock_cursor.execute.call_count == 3
+
+    def test_comparison_table_has_aurora_only_valid(self, monkeypatch: _pytest.MonkeyPatch) -> None:
+        """比較テーブルで Aurora のみ有効値を持ち、OpenSearch/S3 Vectors は N/A であること."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        monkeypatch.setattr(_logic, "_get_aurora_connection", lambda: mock_conn)
+        monkeypatch.setattr(_logic, "generate_query_vectors", lambda rc, sc: [[0.1] * 10 for _ in range(sc)])
+
+        response = run_search_test(search_count=3, top_k=5, record_count=100)
+
+        for row in response.comparison:
+            # Aurora は有効値（N/A ではない）
+            assert row["aurora_pgvector"] != "N/A"
+            # OpenSearch と S3 Vectors は N/A
+            assert row["opensearch"] == "N/A"
+            assert row["s3vectors"] == "N/A"
+
+    def test_opensearch_client_not_called(self, monkeypatch: _pytest.MonkeyPatch) -> None:
+        """OpenSearch クライアント生成が呼ばれないこと."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [(1, "doc", 0.1)]
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_get_opensearch = MagicMock()
+        mock_get_s3vectors = MagicMock()
+
+        monkeypatch.setattr(_logic, "_get_aurora_connection", lambda: mock_conn)
+        monkeypatch.setattr(_logic, "_get_opensearch_client", mock_get_opensearch)
+        monkeypatch.setattr(_logic, "_get_s3vectors_client", mock_get_s3vectors)
+        monkeypatch.setattr(_logic, "generate_query_vectors", lambda rc, sc: [[0.1] * 10 for _ in range(sc)])
+
+        run_search_test(search_count=2, top_k=5, record_count=100)
+
+        mock_get_opensearch.assert_not_called()
+        mock_get_s3vectors.assert_not_called()
+
+
 # --- 追加: Property 4 プロパティテスト (Task 6.5) ---
 
 
