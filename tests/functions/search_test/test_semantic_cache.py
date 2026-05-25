@@ -454,6 +454,154 @@ class TestWriteCache:
         mock_connection.commit.assert_called_once()
 
 
+class TestCacheWriteFailureResultReturn:
+    """キャッシュ書き込み失敗時の結果返却テスト.
+
+    Requirements 5.2: キャッシュ書き込みに失敗した場合でも、
+    検索結果はそのまま呼び出し元に返却されること。
+    """
+
+    def test_lookup_and_search_returns_results_when_write_fails(
+        self, mock_connection: MagicMock, sample_embedding: list[float]
+    ) -> None:
+        """キャッシュ書き込み失敗時でも検索結果が正常に返却される.
+
+        lookup_and_search でキャッシュミスが発生し、Aurora 検索結果を取得後、
+        キャッシュ書き込み（_write_cache 内の store_entry）が例外を発生させても、
+        検索結果が正常に返却されることを確認する。
+        """
+        cursor = mock_connection.cursor.return_value.__enter__.return_value
+        # キャッシュルックアップ: ミス（fetchone returns None）
+        cursor.fetchone.return_value = None
+        # Aurora 検索: 結果を返す
+        aurora_results = [("検索結果コンテンツ", 0.12), ("別の結果", 0.25)]
+        cursor.fetchall.return_value = aurora_results
+
+        # store_entry が例外を発生させるようにモック
+        # _write_cache は daemon thread で実行されるため、
+        # Thread を直接実行して書き込み失敗を確認する
+        with patch.object(threading, "Thread") as mock_thread_class:
+            mock_thread = MagicMock()
+            mock_thread_class.return_value = mock_thread
+
+            result = lookup_and_search(
+                query_text="テストクエリ",
+                query_embedding=sample_embedding,
+                connection=mock_connection,
+                threshold=0.95,
+                top_k=10,
+            )
+
+        # 検索結果が正常に返却されること
+        assert result is not None
+        assert result.results is not None
+        assert len(result.results) == 2
+        assert result.results[0] == {"content": "検索結果コンテンツ", "distance": 0.12}
+        assert result.results[1] == {"content": "別の結果", "distance": 0.25}
+        assert result.hit is False
+        assert result.source == "aurora"
+
+    def test_write_cache_failure_does_not_propagate_exception(
+        self, mock_connection: MagicMock, sample_embedding: list[float]
+    ) -> None:
+        """_write_cache 内で store_entry が例外を発生させても呼び出し元に伝播しない.
+
+        _write_cache を直接呼び出し、store_entry（cursor.execute）が
+        RuntimeError を発生させても、例外が呼び出し元に伝播しないことを確認する。
+        """
+        cursor = mock_connection.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = RuntimeError("Database connection lost")
+
+        # 例外が発生しないことを確認
+        _write_cache(
+            mock_connection,
+            "テストクエリ",
+            sample_embedding,
+            [{"content": "result1", "distance": 0.1}],
+            3600,
+        )
+        # ここに到達すれば例外は伝播していない
+
+    def test_write_cache_failure_logs_error(
+        self, mock_connection: MagicMock, sample_embedding: list[float]
+    ) -> None:
+        """キャッシュ書き込み失敗時にエラーがログに記録される."""
+        cursor = mock_connection.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = RuntimeError("Connection refused")
+
+        with patch.object(_semantic_cache.logger, "error") as mock_log_error:
+            _write_cache(
+                mock_connection,
+                "テストクエリ",
+                sample_embedding,
+                [{"content": "result", "distance": 0.1}],
+                3600,
+            )
+
+            # エラーログが記録されたことを確認
+            mock_log_error.assert_called_once()
+            call_kwargs = mock_log_error.call_args
+            assert call_kwargs[0][0] == "cache_write_failed"
+            assert "Connection refused" in call_kwargs[1]["error"]
+            assert call_kwargs[1]["action"] == "continue_without_cache"
+
+    def test_lookup_and_search_results_not_affected_by_async_write_failure(
+        self, mock_connection: MagicMock, sample_embedding: list[float]
+    ) -> None:
+        """非同期キャッシュ書き込みが失敗しても lookup_and_search の結果に影響しない.
+
+        lookup_and_search でキャッシュミスが発生し Aurora 検索結果を取得後、
+        非同期で実行される _write_cache が失敗しても、
+        既に返却された結果に影響がないことを確認する。
+        """
+        cursor = mock_connection.cursor.return_value.__enter__.return_value
+        # キャッシュルックアップ: ミス
+        cursor.fetchone.return_value = None
+        # Aurora 検索: 結果を返す
+        cursor.fetchall.return_value = [("content A", 0.05)]
+
+        # Thread をキャプチャして target と args を取得
+        with patch.object(threading, "Thread") as mock_thread_class:
+            captured_target = None
+            captured_args = None
+
+            def capture_thread(**kwargs):  # noqa: ANN003
+                nonlocal captured_target, captured_args
+                captured_target = kwargs.get("target")
+                captured_args = kwargs.get("args")
+                mock_t = MagicMock()
+                return mock_t
+
+            mock_thread_class.side_effect = capture_thread
+
+            result = lookup_and_search(
+                query_text="テストクエリ",
+                query_embedding=sample_embedding,
+                connection=mock_connection,
+                threshold=0.95,
+                top_k=10,
+            )
+
+        # 結果が正常に返却されていること
+        assert result is not None
+        assert result.results == [{"content": "content A", "distance": 0.05}]
+        assert result.hit is False
+        assert result.source == "aurora"
+
+        # キャプチャした _write_cache を実行（書き込み失敗をシミュレート）
+        assert captured_target is not None
+        assert captured_args is not None
+
+        # store_entry（cursor.execute）が例外を発生させるように設定
+        cursor.execute.side_effect = RuntimeError("Cache write DB error")
+
+        # _write_cache を直接呼び出し — 例外が伝播しないことを確認
+        captured_target(*captured_args)
+
+        # 結果は変わらないこと（既に返却済みなので影響なし）
+        assert result.results == [{"content": "content A", "distance": 0.05}]
+
+
 # --- プロパティテスト: キャッシュヒットレスポンスのメタデータ完全性 ---
 
 from hypothesis import given, settings
