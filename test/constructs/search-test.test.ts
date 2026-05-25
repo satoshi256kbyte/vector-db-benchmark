@@ -142,6 +142,26 @@ describe("SearchTestConstruct", () => {
         },
       });
     });
+
+    it("SIMILARITY_THRESHOLD 環境変数が 0.95 で設定される", () => {
+      template.hasResourceProperties("AWS::Lambda::Function", {
+        Environment: {
+          Variables: Match.objectLike({
+            SIMILARITY_THRESHOLD: "0.95",
+          }),
+        },
+      });
+    });
+
+    it("CACHE_TTL 環境変数が 3600 で設定される", () => {
+      template.hasResourceProperties("AWS::Lambda::Function", {
+        Environment: {
+          Variables: Match.objectLike({
+            CACHE_TTL: "3600",
+          }),
+        },
+      });
+    });
   });
 
   describe("IAM 権限", () => {
@@ -187,6 +207,34 @@ describe("SearchTestConstruct", () => {
             Match.objectLike({
               Action: Match.arrayWith(["secretsmanager:GetSecretValue"]),
               Effect: "Allow",
+            }),
+          ]),
+        }),
+      });
+    });
+
+    it("IAM ポリシーに bedrock:InvokeModel が含まれる", () => {
+      template.hasResourceProperties("AWS::IAM::Policy", {
+        PolicyDocument: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: "bedrock:InvokeModel",
+              Effect: "Allow",
+            }),
+          ]),
+        }),
+      });
+    });
+
+    it("bedrock:InvokeModel のリソースが Titan Embeddings モデルに限定される", () => {
+      template.hasResourceProperties("AWS::IAM::Policy", {
+        PolicyDocument: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: "bedrock:InvokeModel",
+              Effect: "Allow",
+              Resource:
+                "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-*",
             }),
           ]),
         }),
