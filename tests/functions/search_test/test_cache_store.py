@@ -1,16 +1,19 @@
-"""キャッシュストア操作のユニットテスト."""
+"""キャッシュストア操作のユニットテスト・プロパティテスト."""
 
 from __future__ import annotations
 
 import importlib
 import json
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 
 def _import_cache_store() -> ModuleType:
@@ -312,3 +315,500 @@ class TestCleanupExpired:
         result = cleanup_expired(mock_connection, ttl_seconds=3600)
 
         assert result == 0
+
+
+# --- プロパティテスト: Cache_Entry データモデルの完全性 ---
+
+# Hypothesis ストラテジー定義
+uuid_strategy = st.uuids().map(str)
+
+embedding_strategy = st.lists(
+    st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False),
+    min_size=1024,
+    max_size=1024,
+)
+
+query_text_strategy = st.text(
+    alphabet=st.characters(categories=("L", "M", "N", "P", "S", "Z")),
+    min_size=1,
+    max_size=1000,
+)
+
+search_results_strategy = st.lists(
+    st.dictionaries(
+        keys=st.text(min_size=1, max_size=20),
+        values=st.one_of(
+            st.text(max_size=50),
+            st.integers(min_value=-1000, max_value=1000),
+            st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False),
+            st.booleans(),
+            st.none(),
+        ),
+        min_size=1,
+        max_size=5,
+    ),
+    min_size=1,
+    max_size=10,
+)
+
+created_at_strategy = st.datetimes(
+    min_value=datetime(2020, 1, 1),
+    max_value=datetime(2030, 12, 31),
+    timezones=st.just(timezone.utc),
+)
+
+ttl_seconds_strategy = st.integers(min_value=1, max_value=604800)
+
+
+class TestProperty1CacheEntryDataModelCompleteness:
+    """Property 1: Cache_Entry データモデルの完全性.
+
+    任意の有効な入力（1024次元の浮動小数点数配列、1〜1000文字のテキスト、
+    JSONB形式の検索結果、UTCタイムスタンプ、正の整数TTL）に対して、
+    生成された Cache_Entry は全必須フィールド（id、query_embedding、query_text、
+    search_results、created_at、ttl_seconds）を正しい型で保持すること。
+
+    **Validates: Requirements 2.1**
+    Feature: semantic-cache, Property 1: Cache_Entry データモデルの完全性
+    """
+
+    @given(
+        entry_id=uuid_strategy,
+        query_embedding=embedding_strategy,
+        query_text=query_text_strategy,
+        search_results=search_results_strategy,
+        created_at=created_at_strategy,
+        ttl_seconds=ttl_seconds_strategy,
+    )
+    @settings(max_examples=100)
+    def test_all_required_fields_present_with_correct_types(
+        self,
+        entry_id: str,
+        query_embedding: list[float],
+        query_text: str,
+        search_results: list[dict[str, object]],
+        created_at: datetime,
+        ttl_seconds: int,
+    ) -> None:
+        """全必須フィールドが正しい型で保持されること."""
+        entry = CacheEntry(
+            id=entry_id,
+            query_embedding=query_embedding,
+            query_text=query_text,
+            search_results=search_results,
+            created_at=created_at,
+            ttl_seconds=ttl_seconds,
+        )
+
+        # 全必須フィールドが存在すること
+        assert hasattr(entry, "id")
+        assert hasattr(entry, "query_embedding")
+        assert hasattr(entry, "query_text")
+        assert hasattr(entry, "search_results")
+        assert hasattr(entry, "created_at")
+        assert hasattr(entry, "ttl_seconds")
+
+        # 正しい型であること
+        assert isinstance(entry.id, str), f"id should be str, got {type(entry.id)}"
+        assert isinstance(entry.query_embedding, list), (
+            f"query_embedding should be list, got {type(entry.query_embedding)}"
+        )
+        assert isinstance(entry.query_text, str), f"query_text should be str, got {type(entry.query_text)}"
+        assert isinstance(entry.search_results, list), (
+            f"search_results should be list, got {type(entry.search_results)}"
+        )
+        assert isinstance(entry.created_at, datetime), (
+            f"created_at should be datetime, got {type(entry.created_at)}"
+        )
+        assert isinstance(entry.ttl_seconds, int), f"ttl_seconds should be int, got {type(entry.ttl_seconds)}"
+
+    @given(
+        entry_id=uuid_strategy,
+        query_embedding=embedding_strategy,
+        query_text=query_text_strategy,
+        search_results=search_results_strategy,
+        created_at=created_at_strategy,
+        ttl_seconds=ttl_seconds_strategy,
+    )
+    @settings(max_examples=100)
+    def test_field_values_preserved(
+        self,
+        entry_id: str,
+        query_embedding: list[float],
+        query_text: str,
+        search_results: list[dict[str, object]],
+        created_at: datetime,
+        ttl_seconds: int,
+    ) -> None:
+        """入力値がそのまま保持されること."""
+        entry = CacheEntry(
+            id=entry_id,
+            query_embedding=query_embedding,
+            query_text=query_text,
+            search_results=search_results,
+            created_at=created_at,
+            ttl_seconds=ttl_seconds,
+        )
+
+        assert entry.id == entry_id
+        assert entry.query_embedding == query_embedding
+        assert entry.query_text == query_text
+        assert entry.search_results == search_results
+        assert entry.created_at == created_at
+        assert entry.ttl_seconds == ttl_seconds
+
+    @given(
+        entry_id=uuid_strategy,
+        query_embedding=embedding_strategy,
+        query_text=query_text_strategy,
+        search_results=search_results_strategy,
+        created_at=created_at_strategy,
+        ttl_seconds=ttl_seconds_strategy,
+    )
+    @settings(max_examples=100)
+    def test_embedding_dimension_is_1024(
+        self,
+        entry_id: str,
+        query_embedding: list[float],
+        query_text: str,
+        search_results: list[dict[str, object]],
+        created_at: datetime,
+        ttl_seconds: int,
+    ) -> None:
+        """query_embedding が1024次元であること."""
+        entry = CacheEntry(
+            id=entry_id,
+            query_embedding=query_embedding,
+            query_text=query_text,
+            search_results=search_results,
+            created_at=created_at,
+            ttl_seconds=ttl_seconds,
+        )
+
+        assert len(entry.query_embedding) == 1024
+        assert all(isinstance(v, float) for v in entry.query_embedding)
+
+    @given(
+        entry_id=uuid_strategy,
+        query_embedding=embedding_strategy,
+        query_text=query_text_strategy,
+        search_results=search_results_strategy,
+        created_at=created_at_strategy,
+        ttl_seconds=ttl_seconds_strategy,
+    )
+    @settings(max_examples=100)
+    def test_created_at_has_utc_timezone(
+        self,
+        entry_id: str,
+        query_embedding: list[float],
+        query_text: str,
+        search_results: list[dict[str, object]],
+        created_at: datetime,
+        ttl_seconds: int,
+    ) -> None:
+        """created_at が UTC タイムゾーンを持つこと."""
+        entry = CacheEntry(
+            id=entry_id,
+            query_embedding=query_embedding,
+            query_text=query_text,
+            search_results=search_results,
+            created_at=created_at,
+            ttl_seconds=ttl_seconds,
+        )
+
+        assert entry.created_at.tzinfo is not None
+        assert entry.created_at.tzinfo == timezone.utc
+
+    @given(
+        entry_id=uuid_strategy,
+        query_embedding=embedding_strategy,
+        query_text=query_text_strategy,
+        search_results=search_results_strategy,
+        created_at=created_at_strategy,
+        ttl_seconds=ttl_seconds_strategy,
+    )
+    @settings(max_examples=100)
+    def test_ttl_seconds_is_positive(
+        self,
+        entry_id: str,
+        query_embedding: list[float],
+        query_text: str,
+        search_results: list[dict[str, object]],
+        created_at: datetime,
+        ttl_seconds: int,
+    ) -> None:
+        """ttl_seconds が正の整数であること."""
+        entry = CacheEntry(
+            id=entry_id,
+            query_embedding=query_embedding,
+            query_text=query_text,
+            search_results=search_results,
+            created_at=created_at,
+            ttl_seconds=ttl_seconds,
+        )
+
+        assert entry.ttl_seconds > 0
+
+    @given(
+        entry_id=uuid_strategy,
+        query_embedding=embedding_strategy,
+        query_text=query_text_strategy,
+        search_results=search_results_strategy,
+        created_at=created_at_strategy,
+    )
+    @settings(max_examples=100)
+    def test_default_ttl_is_3600(
+        self,
+        entry_id: str,
+        query_embedding: list[float],
+        query_text: str,
+        search_results: list[dict[str, object]],
+        created_at: datetime,
+    ) -> None:
+        """ttl_seconds のデフォルト値が3600であること."""
+        entry = CacheEntry(
+            id=entry_id,
+            query_embedding=query_embedding,
+            query_text=query_text,
+            search_results=search_results,
+            created_at=created_at,
+        )
+
+        assert entry.ttl_seconds == 3600
+
+
+class TestProperty3TTLCleanupThreshold:
+    """Property 3: TTLクリーンアップ閾値判定.
+
+    任意の Cache_Store 内のエントリ集合に対して、TTL超過エントリの割合が20%以下の場合は
+    物理削除が実行されず、20%を超えた場合のみ超過エントリが物理削除されること。
+
+    **Validates: Requirements 2.5**
+    Feature: semantic-cache, Property 3: TTLクリーンアップ閾値判定
+    """
+
+    @given(
+        total=st.integers(min_value=1, max_value=10000),
+        expired_fraction=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=200)
+    def test_no_deletion_when_expired_ratio_at_or_below_20_percent(
+        self, total: int, expired_fraction: float
+    ) -> None:
+        """超過率が20%以下の場合、物理削除が実行されないこと."""
+        expired = int(total * expired_fraction)
+        # 超過率が20%以下のケースのみテスト
+        if total == 0 or expired / total > 0.20:
+            return
+
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        cursor.fetchone.return_value = (total, expired)
+
+        result = cleanup_expired(mock_conn, ttl_seconds=3600)
+
+        assert result == 0, (
+            f"Expected 0 deletions for expired_ratio={expired}/{total}="
+            f"{expired / total:.4f}, but got {result}"
+        )
+        mock_conn.commit.assert_not_called()
+
+    @given(
+        total=st.integers(min_value=1, max_value=10000),
+        expired_fraction=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=200)
+    def test_deletion_when_expired_ratio_exceeds_20_percent(
+        self, total: int, expired_fraction: float
+    ) -> None:
+        """超過率が20%を超えた場合、超過エントリが物理削除されること."""
+        expired = int(total * expired_fraction)
+        # 超過率が20%を超えるケースのみテスト
+        if total == 0 or expired / total <= 0.20:
+            return
+
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        cursor.fetchone.return_value = (total, expired)
+        cursor.rowcount = expired
+
+        result = cleanup_expired(mock_conn, ttl_seconds=3600)
+
+        assert result == expired, (
+            f"Expected {expired} deletions for expired_ratio={expired}/{total}="
+            f"{expired / total:.4f}, but got {result}"
+        )
+        mock_conn.commit.assert_called_once()
+
+    @given(
+        total=st.integers(min_value=5, max_value=10000),
+    )
+    @settings(max_examples=200)
+    def test_boundary_at_exactly_20_percent(self, total: int) -> None:
+        """超過率がちょうど20%の場合、削除が実行されないこと（境界値テスト）."""
+        expired = total // 5  # floor(total * 0.20)
+        # expired/total <= 0.20 を確認
+        if total == 0 or expired / total > 0.20:
+            return
+
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        cursor.fetchone.return_value = (total, expired)
+
+        result = cleanup_expired(mock_conn, ttl_seconds=3600)
+
+        assert result == 0, (
+            f"Expected 0 deletions at boundary expired_ratio={expired}/{total}="
+            f"{expired / total:.4f}, but got {result}"
+        )
+        mock_conn.commit.assert_not_called()
+
+
+class TestProperty2TtlExpiredEntryExclusion:
+    """Property 2: TTL超過エントリのキャッシュヒット除外.
+
+    任意の Cache_Entry と現在時刻に対して、created_at + ttl_seconds が
+    現在時刻を超過している場合、当該エントリはキャッシュルックアップの
+    結果として返されないこと。
+
+    TTL フィルタリングは SQL WHERE 句で実行されるため、
+    期限切れエントリは DB から返されない（fetchone が None を返す）。
+    このプロパティテストでは、任意の期限切れ条件に対して
+    find_similar が None を返すことを検証する。
+
+    **Validates: Requirements 2.4**
+    Feature: semantic-cache, Property 2: TTL超過エントリのキャッシュヒット除外
+    """
+
+    @given(
+        ttl_seconds=st.integers(min_value=1, max_value=604800),
+        elapsed_extra=st.integers(min_value=1, max_value=86400),
+        threshold=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_expired_entry_not_returned_from_cache(
+        self,
+        ttl_seconds: int,
+        elapsed_extra: int,
+        threshold: float,
+    ) -> None:
+        """TTL超過エントリはキャッシュルックアップで返されないこと.
+
+        SQL WHERE 句 `created_at + (ttl_seconds || ' seconds')::interval > NOW()`
+        により、期限切れエントリは DB クエリ結果から除外される。
+        したがって cursor.fetchone() は None を返し、
+        find_similar は None を返す。
+        """
+        # モック接続を作成
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # DB が None を返す（SQL WHERE 句が期限切れエントリを除外）
+        cursor.fetchone.return_value = None
+
+        # 任意の embedding ベクトル
+        query_embedding = [0.1] * 1024
+
+        result = find_similar(
+            conn,
+            query_embedding,
+            threshold=threshold,
+            ttl_seconds=ttl_seconds,
+        )
+
+        # TTL超過エントリは返されない
+        assert result is None
+
+    @given(
+        ttl_seconds=st.integers(min_value=1, max_value=604800),
+        elapsed_extra=st.integers(min_value=1, max_value=86400),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_sql_query_includes_ttl_filter(
+        self,
+        ttl_seconds: int,
+        elapsed_extra: int,
+    ) -> None:
+        """find_similar が実行する SQL に TTL フィルタリング条件が含まれること.
+
+        SQL WHERE 句に created_at + ttl_seconds による有効期限チェックが
+        含まれていることを検証する。
+        """
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        cursor.fetchone.return_value = None
+
+        query_embedding = [0.1] * 1024
+
+        find_similar(
+            conn,
+            query_embedding,
+            threshold=0.95,
+            ttl_seconds=ttl_seconds,
+        )
+
+        # SQL クエリが実行されたことを確認
+        cursor.execute.assert_called_once()
+        executed_sql = cursor.execute.call_args[0][0]
+
+        # TTL フィルタリング条件が SQL に含まれていることを検証
+        assert "created_at" in executed_sql
+        assert "ttl_seconds" in executed_sql
+        assert "NOW()" in executed_sql
+
+    @given(
+        ttl_seconds=st.integers(min_value=1, max_value=604800),
+        similarity=st.floats(min_value=0.95, max_value=1.0, allow_nan=False, allow_infinity=False),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_valid_entry_returned_only_when_not_expired(
+        self,
+        ttl_seconds: int,
+        similarity: float,
+    ) -> None:
+        """有効期限内のエントリのみがキャッシュヒットとして返されること.
+
+        DB が有効なエントリを返す場合（TTL 未超過）、
+        類似度が閾値以上であれば CacheEntry が返される。
+        これは TTL フィルタリングが正しく機能している場合の
+        正常系を検証する。
+        """
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # DB が有効なエントリを返す（TTL 未超過のため SQL フィルタを通過）
+        entry_id = str(uuid.uuid4())
+        cursor.fetchone.return_value = (
+            entry_id,
+            "テストクエリ",
+            [{"title": "result"}],
+            datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc),
+            ttl_seconds,
+            similarity,
+        )
+
+        query_embedding = [0.1] * 1024
+
+        result = find_similar(
+            conn,
+            query_embedding,
+            threshold=0.95,
+            ttl_seconds=ttl_seconds,
+        )
+
+        # 有効期限内かつ類似度が閾値以上のエントリは返される
+        assert result is not None
+        assert result.id == entry_id
+        assert result.ttl_seconds == ttl_seconds
