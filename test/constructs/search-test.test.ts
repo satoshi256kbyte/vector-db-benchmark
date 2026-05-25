@@ -41,9 +41,9 @@ describe("SearchTestConstruct", () => {
       });
     });
 
-    it("Lambda 関数のハンドラーが handler.handler である", () => {
+    it("Lambda 関数のハンドラーが handler.semantic_cache_handler である", () => {
       template.hasResourceProperties("AWS::Lambda::Function", {
-        Handler: "handler.handler",
+        Handler: "handler.semantic_cache_handler",
       });
     });
 
@@ -145,33 +145,39 @@ describe("SearchTestConstruct", () => {
   });
 
   describe("IAM 権限", () => {
-    it("IAM ポリシーに aoss:APIAccessAll が含まれる", () => {
-      template.hasResourceProperties("AWS::IAM::Policy", {
-        PolicyDocument: Match.objectLike({
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: "aoss:APIAccessAll",
-              Effect: "Allow",
-            }),
-          ]),
-        }),
-      });
+    it("IAM ポリシーに aoss:APIAccessAll が含まれない", () => {
+      const policies = template.findResources("AWS::IAM::Policy");
+      for (const [, policy] of Object.entries(policies)) {
+        const statements =
+          (policy as Record<string, Record<string, Record<string, unknown[]>>>)
+            .Properties?.PolicyDocument?.Statement ?? [];
+        for (const stmt of statements) {
+          const action = (stmt as Record<string, unknown>).Action;
+          expect(action).not.toBe("aoss:APIAccessAll");
+          if (Array.isArray(action)) {
+            expect(action).not.toContain("aoss:APIAccessAll");
+          }
+        }
+      }
     });
 
-    it("IAM ポリシーに s3vectors:QueryVectors と s3vectors:GetVectors が含まれる", () => {
-      template.hasResourceProperties("AWS::IAM::Policy", {
-        PolicyDocument: Match.objectLike({
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                "s3vectors:QueryVectors",
-                "s3vectors:GetVectors",
-              ]),
-              Effect: "Allow",
-            }),
-          ]),
-        }),
-      });
+    it("IAM ポリシーに s3vectors:QueryVectors と s3vectors:GetVectors が含まれない", () => {
+      const policies = template.findResources("AWS::IAM::Policy");
+      for (const [, policy] of Object.entries(policies)) {
+        const statements =
+          (policy as Record<string, Record<string, Record<string, unknown[]>>>)
+            .Properties?.PolicyDocument?.Statement ?? [];
+        for (const stmt of statements) {
+          const action = (stmt as Record<string, unknown>).Action;
+          if (Array.isArray(action)) {
+            expect(action).not.toContain("s3vectors:QueryVectors");
+            expect(action).not.toContain("s3vectors:GetVectors");
+          } else {
+            expect(action).not.toBe("s3vectors:QueryVectors");
+            expect(action).not.toBe("s3vectors:GetVectors");
+          }
+        }
+      }
     });
 
     it("IAM ポリシーに secretsmanager:GetSecretValue が含まれる", () => {

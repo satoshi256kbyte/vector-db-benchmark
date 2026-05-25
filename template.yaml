@@ -22,5 +22,5 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: functions/search-test/
-      Handler: handler.handler
+      Handler: handler.semantic_cache_handler
       Runtime: python3.13

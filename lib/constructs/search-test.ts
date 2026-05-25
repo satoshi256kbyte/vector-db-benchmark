@@ -30,7 +30,7 @@ export class SearchTestConstruct extends Construct {
     this.function = new lambda.Function(this, "Function", {
       functionName: "vdbbench-dev-lambda-search-test",
       runtime: lambda.Runtime.PYTHON_3_13,
-      handler: "handler.handler",
+      handler: "handler.semantic_cache_handler",
       code: lambda.Code.fromAsset(".aws-sam/build/SearchTestFunction"),
       memorySize: 512,
       timeout: cdk.Duration.seconds(300),
@@ -45,6 +45,8 @@ export class SearchTestConstruct extends Construct {
         OPENSEARCH_ENDPOINT: props.opensearchCollectionEndpoint,
         S3VECTORS_BUCKET_NAME: props.s3vectorsBucketName,
         S3VECTORS_INDEX_NAME: props.s3vectorsIndexName,
+        SIMILARITY_THRESHOLD: "0.95",
+        CACHE_TTL: "3600",
         POWERTOOLS_SERVICE_NAME: "search-test",
         POWERTOOLS_LOG_LEVEL: "INFO",
       },
@@ -53,19 +55,13 @@ export class SearchTestConstruct extends Construct {
     // Grant Secrets Manager read access for Aurora credentials
     props.auroraSecret.grantRead(this.function);
 
-    // Grant OpenSearch Serverless API access
+    // Grant Bedrock InvokeModel access for Titan Embeddings
     this.function.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["aoss:APIAccessAll"],
-        resources: ["*"],
-      }),
-    );
-
-    // Grant S3 Vectors access (query and get for search testing)
-    this.function.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["s3vectors:QueryVectors", "s3vectors:GetVectors"],
-        resources: ["*"],
+        actions: ["bedrock:InvokeModel"],
+        resources: [
+          "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-*",
+        ],
       }),
     );
   }
