@@ -7,12 +7,17 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 def _passthrough_decorator(func=None, **kwargs):  # noqa: ANN001, ANN003
@@ -83,7 +88,9 @@ def _import_search_test_handler() -> ModuleType:
 
 _handler_mod = _import_search_test_handler()
 _parse_event = _handler_mod._parse_event
+_get_config = _handler_mod._get_config
 handler_fn = _handler_mod.handler
+semantic_cache_handler_fn = _handler_mod.semantic_cache_handler
 
 
 class TestParseEvent:
@@ -186,3 +193,246 @@ class TestHandler:
         assert result["statusCode"] == 500
         body = json.loads(result["body"])
         assert "DB connection failed" in body["error"]
+
+
+class TestSemanticCacheHandlerBedrockTimeout:
+    """Bedrock タイムアウト時のバイパステスト.
+
+    Requirements 3.3: Bedrock 呼び出しタイムアウト時に Aurora 直接検索にフォールバックする。
+    """
+
+    @patch.object(_handler_mod, "_get_aurora_connection")
+    @patch.object(_handler_mod, "generate_embedding")
+    def test_bedrock_timeout_bypasses_to_aurora(
+        self,
+        mock_generate_embedding: MagicMock,
+        mock_get_aurora_connection: MagicMock,
+    ) -> None:
+        """Bedrock タイムアウト時に Aurora 直接検索にフォールバックすること."""
+        # Arrange: generate_embedding が EmbeddingError を発生させる
+        embedding_error = _handler_mod.EmbeddingError("Bedrock タイムアウト")
+        mock_generate_embedding.side_effect = embedding_error
+
+        # Aurora 接続のモック
+        mock_connection = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("結果1: テストコンテンツ", 0.15),
+            ("結果2: テストコンテンツ", 0.25),
+        ]
+        mock_connection.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_connection.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_get_aurora_connection.return_value = mock_connection
+
+        # Act
+        event: dict[str, object] = {"query": "テスト"}
+        context = MagicMock()
+        response = semantic_cache_handler_fn(event, context)
+
+        # Assert: 200 レスポンスが返ること
+        assert response["statusCode"] == 200
+
+        # Assert: レスポンスボディに結果が含まれること
+        body = json.loads(response["body"])
+        assert "results" in body
+        assert len(body["results"]) == 2
+
+        # Assert: キャッシュメタデータで hit=False であること
+        assert body["cache"]["hit"] is False
+
+        # Assert: lookup_and_search が呼ばれていないこと（バイパス）
+        # lookup_and_search はキャッシュ経由の検索で使われるが、
+        # バイパス時は直接 Aurora に検索するため呼ばれない
+        mock_generate_embedding.assert_called_once_with("テスト")
+
+    @patch.object(_handler_mod, "lookup_and_search")
+    @patch.object(_handler_mod, "_get_aurora_connection")
+    @patch.object(_handler_mod, "generate_embedding")
+    def test_bedrock_timeout_does_not_call_lookup_and_search(
+        self,
+        mock_generate_embedding: MagicMock,
+        mock_get_aurora_connection: MagicMock,
+        mock_lookup_and_search: MagicMock,
+    ) -> None:
+        """Bedrock タイムアウト時に lookup_and_search が呼ばれないこと."""
+        # Arrange
+        embedding_error = _handler_mod.EmbeddingError("Bedrock タイムアウト")
+        mock_generate_embedding.side_effect = embedding_error
+
+        mock_connection = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [("テスト結果", 0.1)]
+        mock_connection.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_connection.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_get_aurora_connection.return_value = mock_connection
+
+        # Act
+        event: dict[str, object] = {"query": "テストクエリ"}
+        response = semantic_cache_handler_fn(event, MagicMock())
+
+        # Assert: lookup_and_search が呼ばれていないこと
+        mock_lookup_and_search.assert_not_called()
+
+        # Assert: レスポンスは正常
+        assert response["statusCode"] == 200
+
+
+# --- プロパティテスト: Lambda入力バリデーション ---
+
+
+# semantic_cache_handler を取得
+_semantic_cache_handler = _handler_mod.semantic_cache_handler
+
+
+class TestProperty10LambdaInputValidation:
+    """Property 10: Lambda入力バリデーション.
+
+    任意の空文字列または1000文字を超過する文字列に対して、
+    Lambda はバリデーションエラーレスポンス（statusCode 400）を返し、
+    キャッシュおよび検索処理を実行しないこと。
+
+    **Validates: Requirements 7.2**
+    Feature: semantic-cache, Property 10: Lambda入力バリデーション
+    """
+
+    @given(
+        query=st.just(""),
+    )
+    @settings(max_examples=100, deadline=None)
+    @patch.object(_handler_mod, "generate_embedding")
+    @patch.object(_handler_mod, "_get_aurora_connection")
+    @patch.object(_handler_mod, "lookup_and_search")
+    def test_empty_string_returns_400(
+        self,
+        mock_lookup: MagicMock,
+        mock_aurora_conn: MagicMock,
+        mock_embedding: MagicMock,
+        query: str,
+    ) -> None:
+        """空文字列に対してバリデーションエラー（400）を返すこと.
+
+        - statusCode が 400 であること
+        - レスポンスボディに "error" が含まれること
+        - generate_embedding が呼ばれないこと
+        - _get_aurora_connection が呼ばれないこと
+        - lookup_and_search が呼ばれないこと
+        """
+        event: dict[str, object] = {"query": query}
+        response = _semantic_cache_handler(event, MagicMock())
+
+        # statusCode 400 を返すこと
+        assert response["statusCode"] == 400, (
+            f"Expected statusCode 400 for empty string, "
+            f"got {response['statusCode']}"
+        )
+
+        # レスポンスボディに "error" が含まれること
+        body = json.loads(response["body"])
+        assert "error" in body, (
+            f"Expected 'error' in response body, got {body}"
+        )
+
+        # キャッシュおよび検索処理が実行されないこと
+        mock_embedding.assert_not_called()
+        mock_aurora_conn.assert_not_called()
+        mock_lookup.assert_not_called()
+
+    @given(
+        query=st.text(min_size=1001, max_size=2000),
+    )
+    @settings(max_examples=100, deadline=None)
+    @patch.object(_handler_mod, "generate_embedding")
+    @patch.object(_handler_mod, "_get_aurora_connection")
+    @patch.object(_handler_mod, "lookup_and_search")
+    def test_over_1000_chars_returns_400(
+        self,
+        mock_lookup: MagicMock,
+        mock_aurora_conn: MagicMock,
+        mock_embedding: MagicMock,
+        query: str,
+    ) -> None:
+        """1000文字を超過する文字列に対してバリデーションエラー（400）を返すこと.
+
+        - statusCode が 400 であること
+        - レスポンスボディに "error" が含まれること
+        - generate_embedding が呼ばれないこと
+        - _get_aurora_connection が呼ばれないこと
+        - lookup_and_search が呼ばれないこと
+        """
+        event: dict[str, object] = {"query": query}
+        response = _semantic_cache_handler(event, MagicMock())
+
+        # statusCode 400 を返すこと
+        assert response["statusCode"] == 400, (
+            f"Expected statusCode 400 for query of length {len(query)}, "
+            f"got {response['statusCode']}"
+        )
+
+        # レスポンスボディに "error" が含まれること
+        body = json.loads(response["body"])
+        assert "error" in body, (
+            f"Expected 'error' in response body for query of "
+            f"length {len(query)}, got {body}"
+        )
+
+        # キャッシュおよび検索処理が実行されないこと
+        mock_embedding.assert_not_called()
+        mock_aurora_conn.assert_not_called()
+        mock_lookup.assert_not_called()
+
+
+# --- プロパティテスト: 設定デフォルト値 ---
+# Feature: semantic-cache, Property 11: 設定デフォルト値
+# **Validates: Requirements 4.4, 8.4**
+
+
+class TestConfigDefaultValuesProperty:
+    """Property 11: 設定デフォルト値.
+
+    任意の環境変数未設定状態に対して、SIMILARITY_THRESHOLD は 0.95、
+    CACHE_TTL は 3600 がデフォルト値として使用されること。
+    また、環境変数が設定されている場合はその値が使用されること。
+    """
+
+    @settings(max_examples=100)
+    @given(st.just(None))
+    def test_default_values_when_env_vars_unset(self, _: None) -> None:
+        """環境変数未設定時にデフォルト値が使用されること."""
+        env_backup_threshold = os.environ.pop("SIMILARITY_THRESHOLD", None)
+        env_backup_ttl = os.environ.pop("CACHE_TTL", None)
+        try:
+            threshold, ttl = _get_config()
+            assert threshold == 0.95, f"Expected 0.95, got {threshold}"
+            assert ttl == 3600, f"Expected 3600, got {ttl}"
+        finally:
+            if env_backup_threshold is not None:
+                os.environ["SIMILARITY_THRESHOLD"] = env_backup_threshold
+            if env_backup_ttl is not None:
+                os.environ["CACHE_TTL"] = env_backup_ttl
+
+    @settings(max_examples=100)
+    @given(
+        threshold=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        ttl=st.integers(min_value=1, max_value=604800),
+    )
+    def test_env_var_values_used_when_set(self, threshold: float, ttl: int) -> None:
+        """環境変数が設定されている場合、その値が使用されること."""
+        env_backup_threshold = os.environ.get("SIMILARITY_THRESHOLD")
+        env_backup_ttl = os.environ.get("CACHE_TTL")
+        os.environ["SIMILARITY_THRESHOLD"] = str(threshold)
+        os.environ["CACHE_TTL"] = str(ttl)
+        try:
+            result_threshold, result_ttl = _get_config()
+            assert result_threshold == pytest.approx(threshold), (
+                f"Expected {threshold}, got {result_threshold}"
+            )
+            assert result_ttl == ttl, f"Expected {ttl}, got {result_ttl}"
+        finally:
+            if env_backup_threshold is not None:
+                os.environ["SIMILARITY_THRESHOLD"] = env_backup_threshold
+            else:
+                os.environ.pop("SIMILARITY_THRESHOLD", None)
+            if env_backup_ttl is not None:
+                os.environ["CACHE_TTL"] = env_backup_ttl
+            else:
+                os.environ.pop("CACHE_TTL", None)
