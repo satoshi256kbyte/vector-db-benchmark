@@ -720,3 +720,153 @@ class TestProperty5SimilarityThresholdHitMiss:
             f"threshold={threshold}, but got hit"
         )
         assert result.source == "aurora"
+
+
+# --- プロパティテスト: キャッシュミス時のエントリ保存 ---
+
+
+class TestProperty7CacheMissEntryStorage:
+    """Property 7: キャッシュミス時のエントリ保存.
+
+    任意のキャッシュミス結果に対して、Cache_Store に保存される Cache_Entry は
+    元のクエリ embedding、クエリテキスト、Aurora 検索結果、現在のタイムスタンプ、
+    および設定された TTL 値を正しく含むこと。
+
+    **Validates: Requirements 5.1**
+    Feature: semantic-cache, Property 7: キャッシュミス時のエントリ保存
+    """
+
+    @given(
+        query_text=st.text(
+            alphabet=st.characters(categories=("L", "N", "P")),
+            min_size=1,
+            max_size=100,
+        ),
+        ttl_seconds=st.integers(min_value=1, max_value=604800),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_write_cache_receives_correct_args_on_miss(
+        self,
+        query_text: str,
+        ttl_seconds: int,
+    ) -> None:
+        """キャッシュミス時に _write_cache に正しい引数が渡されること.
+
+        lookup_and_search がキャッシュミスを検出した場合、
+        threading.Thread 経由で _write_cache が呼ばれ、
+        その引数に query_text, query_embedding, search_results, ttl_seconds が
+        正しく含まれることを検証する。
+        """
+        # テスト用 embedding（1024次元）
+        query_embedding = [0.5] * 1024
+        aurora_results = [{"content": "result", "distance": 0.1}]
+
+        # モック接続を作成
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # キャッシュルックアップ: ミス（fetchone returns None）
+        cursor.fetchone.return_value = None
+        # Aurora 検索: 結果を返す
+        cursor.fetchall.return_value = [("result", 0.1)]
+
+        # threading.Thread をパッチして引数をキャプチャ
+        with patch.object(threading, "Thread") as mock_thread_class:
+            mock_thread = MagicMock()
+            mock_thread_class.return_value = mock_thread
+
+            lookup_and_search(
+                query_text=query_text,
+                query_embedding=query_embedding,
+                connection=mock_conn,
+                threshold=0.95,
+                top_k=10,
+                ttl_seconds=ttl_seconds,
+            )
+
+            # Thread が作成されたことを確認
+            mock_thread_class.assert_called_once()
+            call_kwargs = mock_thread_class.call_args[1]
+
+            # target が _write_cache であること
+            assert call_kwargs["target"] == _write_cache
+
+            # args に正しい値が含まれること
+            thread_args = call_kwargs["args"]
+            assert thread_args[0] is mock_conn  # connection
+            assert thread_args[1] == query_text  # query_text
+            assert thread_args[2] == query_embedding  # query_embedding
+            assert thread_args[3] == aurora_results  # search_results
+            assert thread_args[4] == ttl_seconds  # ttl_seconds
+
+    @given(
+        query_text=st.text(
+            alphabet=st.characters(categories=("L", "N", "P")),
+            min_size=1,
+            max_size=100,
+        ),
+        ttl_seconds=st.integers(min_value=1, max_value=604800),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_write_cache_creates_entry_with_correct_fields(
+        self,
+        query_text: str,
+        ttl_seconds: int,
+    ) -> None:
+        """_write_cache が正しいフィールドを持つ CacheEntry を store_entry に渡すこと.
+
+        _write_cache を直接呼び出し、store_entry に渡される CacheEntry が
+        元のクエリ embedding、クエリテキスト、検索結果、現在のタイムスタンプ、
+        TTL 値を正しく含むことを検証する。
+        """
+        query_embedding = [0.3] * 1024
+        search_results: list[dict[str, object]] = [
+            {"content": "test result", "distance": 0.2}
+        ]
+
+        # モック接続を作成
+        mock_conn = MagicMock()
+        cursor = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # _write_cache を実行する前の時刻を記録
+        before_call = datetime.now(tz=timezone.utc)
+
+        _write_cache(
+            mock_conn,
+            query_text,
+            query_embedding,
+            search_results,
+            ttl_seconds,
+        )
+
+        after_call = datetime.now(tz=timezone.utc)
+
+        # store_entry が呼ばれた（= cursor.execute が呼ばれた）ことを確認
+        cursor.execute.assert_called_once()
+        call_args = cursor.execute.call_args[0][1]
+
+        # INSERT パラメータの検証
+        # call_args: (id, embedding_str, query_text, search_results_json, created_at, ttl_seconds)
+        stored_id = call_args[0]
+        stored_query_text = call_args[2]
+        stored_created_at = call_args[4]
+        stored_ttl = call_args[5]
+
+        # UUID 形式であること
+        assert len(stored_id) == 36  # UUID format: 8-4-4-4-12
+
+        # query_text が正しいこと
+        assert stored_query_text == query_text
+
+        # created_at が呼び出し前後の時刻の間にあること
+        assert before_call <= stored_created_at <= after_call
+
+        # ttl_seconds が正しいこと
+        assert stored_ttl == ttl_seconds
+
+        # コミットされたこと
+        mock_conn.commit.assert_called_once()
