@@ -1,4 +1,4 @@
-"""セマンティックキャッシュ制御のユニットテスト."""
+"""セマンティックキャッシュ制御のユニットテスト・プロパティテスト."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 def _import_semantic_cache() -> ModuleType:
@@ -450,3 +452,271 @@ class TestWriteCache:
         )
 
         mock_connection.commit.assert_called_once()
+
+
+# --- プロパティテスト: キャッシュヒットレスポンスのメタデータ完全性 ---
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+
+class TestProperty6CacheHitResponseMetadataCompleteness:
+    """Property 6: キャッシュヒットレスポンスのメタデータ完全性.
+
+    任意のキャッシュヒットレスポンスに対して、キャッシュヒット判定結果（true）、
+    類似度スコア（0.0〜1.0の浮動小数点数）、キャッシュルックアップ所要時間
+    （正のミリ秒値）が全て含まれること。
+
+    **Validates: Requirements 4.5, 7.6**
+    Feature: semantic-cache, Property 6: キャッシュヒットレスポンスのメタデータ完全性
+    """
+
+    @given(
+        similarity_score=st.floats(
+            min_value=0.95,
+            max_value=1.0,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_cache_hit_contains_all_metadata(
+        self, similarity_score: float
+    ) -> None:
+        """キャッシュヒット時にメタデータが完全に含まれること.
+
+        - hit が True であること
+        - similarity_score が 0.0〜1.0 の浮動小数点数であること
+        - lookup_time_ms が正のミリ秒値であること
+        - source が "cache" であること
+        """
+        from datetime import datetime, timezone
+        from unittest.mock import MagicMock
+
+        # モック接続を作成
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # キャッシュヒットを返すようにモックを設定
+        cached_results = [{"content": "cached result", "distance": 0.05}]
+        cursor.fetchone.return_value = (
+            "550e8400-e29b-41d4-a716-446655440000",
+            "テストクエリ",
+            cached_results,
+            datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            3600,
+            similarity_score,
+        )
+
+        query_embedding = [0.1] * 1024
+
+        result = lookup_and_search(
+            query_text="テストクエリ",
+            query_embedding=query_embedding,
+            connection=conn,
+            threshold=0.95,
+            top_k=10,
+        )
+
+        # キャッシュヒット判定結果が True であること
+        assert result.hit is True, (
+            f"Expected hit=True, got {result.hit}"
+        )
+
+        # 類似度スコアが 0.0〜1.0 の浮動小数点数であること
+        assert result.similarity_score is not None, (
+            "similarity_score should not be None for cache hit"
+        )
+        assert isinstance(result.similarity_score, float), (
+            f"similarity_score should be float, got "
+            f"{type(result.similarity_score)}"
+        )
+        assert 0.0 <= result.similarity_score <= 1.0, (
+            f"similarity_score should be between 0.0 and 1.0, "
+            f"got {result.similarity_score}"
+        )
+
+        # キャッシュルックアップ所要時間が正のミリ秒値であること
+        assert result.lookup_time_ms > 0, (
+            f"lookup_time_ms should be positive, "
+            f"got {result.lookup_time_ms}"
+        )
+
+        # source が "cache" であること
+        assert result.source == "cache", (
+            f"Expected source='cache', got '{result.source}'"
+        )
+
+
+
+# --- プロパティテスト: 類似度閾値に基づくキャッシュヒット/ミス判定 ---
+
+
+class TestProperty5SimilarityThresholdHitMiss:
+    """Property 5: 類似度閾値に基づくキャッシュヒット/ミス判定.
+
+    任意のコサイン類似度スコアと Similarity_Threshold に対して、
+    スコアが閾値以上の場合はキャッシュヒット、閾値未満の場合は
+    キャッシュミスと判定されること。
+
+    **Validates: Requirements 4.2, 4.3**
+    Feature: semantic-cache, Property 5: 類似度閾値に基づくキャッシュヒット/ミス判定
+    """
+
+    @given(
+        similarity=st.floats(
+            min_value=0.0, max_value=1.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        threshold=st.floats(
+            min_value=0.0, max_value=1.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=200, deadline=None)
+    def test_hit_when_similarity_gte_threshold(
+        self, similarity: float, threshold: float
+    ) -> None:
+        """類似度が閾値以上の場合、キャッシュヒットと判定されること."""
+        # 類似度 >= 閾値のケースのみテスト
+        if similarity < threshold:
+            return
+
+        # モック接続を作成
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # DB がキャッシュエントリを返す（類似度が閾値以上）
+        cursor.fetchone.return_value = (
+            "550e8400-e29b-41d4-a716-446655440000",
+            "テストクエリ",
+            [{"content": "cached result", "distance": 0.05}],
+            datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc),
+            3600,
+            similarity,
+        )
+
+        query_embedding = [0.1] * 1024
+
+        result = lookup_and_search(
+            query_text="テストクエリ",
+            query_embedding=query_embedding,
+            connection=conn,
+            threshold=threshold,
+            top_k=10,
+        )
+
+        assert result.hit is True, (
+            f"Expected cache hit for similarity={similarity}, "
+            f"threshold={threshold}, but got miss"
+        )
+        assert result.source == "cache", (
+            f"Expected source='cache' for similarity={similarity}, "
+            f"threshold={threshold}, but got '{result.source}'"
+        )
+        assert result.similarity_score == similarity
+
+    @given(
+        similarity=st.floats(
+            min_value=0.0, max_value=1.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        threshold=st.floats(
+            min_value=0.0, max_value=1.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=200, deadline=None)
+    def test_miss_when_similarity_lt_threshold(
+        self, similarity: float, threshold: float
+    ) -> None:
+        """類似度が閾値未満の場合、キャッシュミスと判定されること."""
+        # 類似度 < 閾値のケースのみテスト
+        if similarity >= threshold:
+            return
+
+        # モック接続を作成
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # DB がエントリを返すが類似度が閾値未満
+        # _find_similar_with_score は (None, score) を返す
+        cursor.fetchone.return_value = (
+            "550e8400-e29b-41d4-a716-446655440000",
+            "テストクエリ",
+            [{"content": "cached result", "distance": 0.05}],
+            datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc),
+            3600,
+            similarity,
+        )
+        # Aurora 検索結果
+        cursor.fetchall.return_value = [
+            ("aurora result", 0.2),
+        ]
+
+        query_embedding = [0.1] * 1024
+
+        with patch.object(threading.Thread, "start"):
+            result = lookup_and_search(
+                query_text="テストクエリ",
+                query_embedding=query_embedding,
+                connection=conn,
+                threshold=threshold,
+                top_k=10,
+            )
+
+        assert result.hit is False, (
+            f"Expected cache miss for similarity={similarity}, "
+            f"threshold={threshold}, but got hit"
+        )
+        assert result.source == "aurora", (
+            f"Expected source='aurora' for similarity={similarity}, "
+            f"threshold={threshold}, but got '{result.source}'"
+        )
+
+    @given(
+        threshold=st.floats(
+            min_value=0.0, max_value=1.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_miss_when_no_cache_entries(
+        self, threshold: float
+    ) -> None:
+        """キャッシュにエントリがない場合、キャッシュミスと判定されること."""
+        # モック接続を作成
+        conn = MagicMock()
+        cursor = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        # DB がエントリを返さない
+        cursor.fetchone.return_value = None
+        # Aurora 検索結果
+        cursor.fetchall.return_value = [
+            ("aurora result", 0.3),
+        ]
+
+        query_embedding = [0.1] * 1024
+
+        with patch.object(threading.Thread, "start"):
+            result = lookup_and_search(
+                query_text="テストクエリ",
+                query_embedding=query_embedding,
+                connection=conn,
+                threshold=threshold,
+                top_k=10,
+            )
+
+        assert result.hit is False, (
+            f"Expected cache miss when no entries exist, "
+            f"threshold={threshold}, but got hit"
+        )
+        assert result.source == "aurora"

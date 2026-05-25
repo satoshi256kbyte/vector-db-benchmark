@@ -9,6 +9,10 @@ from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 def _import_metrics() -> ModuleType:
@@ -351,3 +355,126 @@ class TestLogCacheStats:
             mock_logger.error.assert_called_once()
         finally:
             _metrics_mod.logger = original_logger
+
+
+# --- プロパティテスト: レスポンスメトリクスの完全性 ---
+
+
+class TestProperty8ResponseMetricsCompleteness:
+    """Property 8: レスポンスメトリクスの完全性.
+
+    任意のキャッシュヒットレスポンスに対して結果返却時間が含まれ、
+    任意のキャッシュミスレスポンスに対して Aurora 検索時間と
+    キャッシュ書き込み時間がそれぞれ個別に含まれること。
+
+    **Validates: Requirements 6.2, 6.3**
+    Feature: semantic-cache, Property 8: レスポンスメトリクスの完全性
+    """
+
+    @given(
+        total_time_ms=st.floats(
+            min_value=0.01, max_value=10000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        embedding_time_ms=st.floats(
+            min_value=0.01, max_value=5000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        lookup_time_ms=st.floats(
+            min_value=0.01, max_value=5000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        similarity_score=st.floats(
+            min_value=0.0, max_value=1.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_cache_hit_has_total_time(
+        self,
+        total_time_ms: float,
+        embedding_time_ms: float,
+        lookup_time_ms: float,
+        similarity_score: float,
+    ) -> None:
+        """キャッシュヒット時に結果返却時間（total_time_ms）が含まれ正の値であること."""
+        metrics = SearchMetrics(
+            total_time_ms=total_time_ms,
+            embedding_time_ms=embedding_time_ms,
+            lookup_time_ms=lookup_time_ms,
+            search_time_ms=None,
+            cache_write_time_ms=None,
+            cache_hit=True,
+            similarity_score=similarity_score,
+        )
+
+        # キャッシュヒット時: total_time_ms が存在し正の値
+        assert metrics.total_time_ms is not None, (
+            "Cache hit response must include total_time_ms"
+        )
+        assert metrics.total_time_ms > 0, (
+            f"Cache hit total_time_ms must be > 0, got {metrics.total_time_ms}"
+        )
+        # キャッシュヒット時: lookup_time_ms が存在する
+        assert metrics.lookup_time_ms is not None, (
+            "Cache hit response must include lookup_time_ms"
+        )
+
+    @given(
+        total_time_ms=st.floats(
+            min_value=0.01, max_value=10000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        embedding_time_ms=st.floats(
+            min_value=0.01, max_value=5000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        lookup_time_ms=st.floats(
+            min_value=0.01, max_value=5000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        search_time_ms=st.floats(
+            min_value=0.01, max_value=5000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        cache_write_time_ms=st.floats(
+            min_value=0.01, max_value=5000.0,
+            allow_nan=False, allow_infinity=False,
+        ),
+        similarity_score=st.one_of(
+            st.none(),
+            st.floats(
+                min_value=0.0, max_value=1.0,
+                allow_nan=False, allow_infinity=False,
+            ),
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_cache_miss_has_search_and_write_times(
+        self,
+        total_time_ms: float,
+        embedding_time_ms: float,
+        lookup_time_ms: float,
+        search_time_ms: float,
+        cache_write_time_ms: float,
+        similarity_score: float | None,
+    ) -> None:
+        """キャッシュミス時に Aurora 検索時間とキャッシュ書き込み時間が個別に含まれること."""
+        metrics = SearchMetrics(
+            total_time_ms=total_time_ms,
+            embedding_time_ms=embedding_time_ms,
+            lookup_time_ms=lookup_time_ms,
+            search_time_ms=search_time_ms,
+            cache_write_time_ms=cache_write_time_ms,
+            cache_hit=False,
+            similarity_score=similarity_score,
+        )
+
+        # キャッシュミス時: search_time_ms が存在する（Aurora 検索時間）
+        assert metrics.search_time_ms is not None, (
+            "Cache miss response must include search_time_ms (Aurora search time)"
+        )
+        # キャッシュミス時: cache_write_time_ms が存在する（キャッシュ書き込み時間）
+        assert metrics.cache_write_time_ms is not None, (
+            "Cache miss response must include cache_write_time_ms"
+        )
