@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from metrics import SearchMetrics
 
 
 @dataclass
@@ -91,3 +96,89 @@ class SearchTestResponse:
             データクラスの全フィールドを含む辞書
         """
         return asdict(self)
+
+
+@dataclass
+class CacheEntry:
+    """セマンティックキャッシュの1エントリ.
+
+    Attributes:
+        id: エントリID（UUID）
+        query_embedding: クエリ embedding ベクトル（1024次元）
+        query_text: 元のクエリテキスト（最大1000文字）
+        search_results: 検索結果（JSONB形式で保存）
+        created_at: 作成タイムスタンプ（UTC）
+        ttl_seconds: 有効期限（秒単位、デフォルト3600）
+    """
+
+    id: str
+    query_embedding: list[float]
+    query_text: str
+    search_results: list[dict[str, object]]
+    created_at: datetime
+    ttl_seconds: int = 3600
+
+
+@dataclass
+class CacheMetadata:
+    """キャッシュメタデータ.
+
+    Attributes:
+        hit: キャッシュヒット判定
+        similarity_score: コサイン類似度スコア（ミス時はNone）
+        lookup_time_ms: キャッシュルックアップ所要時間
+    """
+
+    hit: bool
+    similarity_score: float | None
+    lookup_time_ms: float
+
+
+@dataclass
+class SemanticCacheResponse:
+    """セマンティックキャッシュ検索レスポンス.
+
+    Attributes:
+        results: 検索結果リスト
+        cache: キャッシュメタデータ
+        metrics: パフォーマンスメトリクス
+    """
+
+    results: list[dict[str, object]]
+    cache: CacheMetadata
+    metrics: SearchMetrics
+
+    def to_dict(self) -> dict[str, object]:
+        """JSON シリアライズ可能な辞書に変換する.
+
+        Returns:
+            データクラスの全フィールドを含む辞書
+        """
+        return {
+            "results": self.results,
+            "cache": asdict(self.cache),
+            "metrics": self.metrics.to_dict(),
+        }
+
+
+@dataclass
+class CacheStats:
+    """キャッシュ統計.
+
+    Attributes:
+        total_requests: 総リクエスト数
+        cache_hits: キャッシュヒット数
+        cache_misses: キャッシュミス数
+        hit_rate_percent: キャッシュヒット率（%）
+        avg_hit_latency_ms: キャッシュヒット時の平均レイテンシ
+        avg_miss_latency_ms: キャッシュミス時の平均レイテンシ
+        latency_reduction_percent: 平均レイテンシ削減率（%）
+    """
+
+    total_requests: int
+    cache_hits: int
+    cache_misses: int
+    hit_rate_percent: float
+    avg_hit_latency_ms: float
+    avg_miss_latency_ms: float
+    latency_reduction_percent: float

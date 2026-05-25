@@ -45,7 +45,10 @@ def _import_search_test_handler() -> ModuleType:
 
     original_path = sys.path[:]
     saved_modules: dict[str, object] = {}
-    for name in ["handler", "logic", "models", "vector_generator"]:
+    for name in [
+        "handler", "logic", "models", "vector_generator",
+        "embedding", "metrics", "semantic_cache", "cache_store",
+    ]:
         saved_modules[name] = sys.modules.pop(name, None)
     saved_ext: dict[str, object] = {}
     for mod_name, mock in ext_mocks.items():
@@ -64,6 +67,10 @@ def _import_search_test_handler() -> ModuleType:
         sys.modules.pop("logic", None)
         sys.modules.pop("models", None)
         sys.modules.pop("vector_generator", None)
+        sys.modules.pop("embedding", None)
+        sys.modules.pop("metrics", None)
+        sys.modules.pop("semantic_cache", None)
+        sys.modules.pop("cache_store", None)
         for name, saved in saved_modules.items():
             if saved is not None:
                 sys.modules[name] = saved
