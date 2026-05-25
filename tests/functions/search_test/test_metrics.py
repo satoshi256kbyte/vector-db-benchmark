@@ -478,3 +478,150 @@ class TestProperty8ResponseMetricsCompleteness:
         assert metrics.cache_write_time_ms is not None, (
             "Cache miss response must include cache_write_time_ms"
         )
+
+
+# --- Hypothesis Strategies ---
+
+
+def search_metrics_strategy(cache_hit: bool | None = None) -> st.SearchStrategy[object]:
+    """SearchMetrics のストラテジー.
+
+    Args:
+        cache_hit: 固定する場合は True/False、ランダムの場合は None
+    """
+    hit_strategy = st.just(cache_hit) if cache_hit is not None else st.booleans()
+    return st.builds(
+        SearchMetrics,
+        total_time_ms=st.floats(min_value=0.1, max_value=10000.0, allow_nan=False, allow_infinity=False),
+        embedding_time_ms=st.one_of(
+            st.none(),
+            st.floats(min_value=0.1, max_value=5000.0, allow_nan=False, allow_infinity=False),
+        ),
+        lookup_time_ms=st.one_of(
+            st.none(),
+            st.floats(min_value=0.1, max_value=5000.0, allow_nan=False, allow_infinity=False),
+        ),
+        search_time_ms=st.one_of(
+            st.none(),
+            st.floats(min_value=0.1, max_value=5000.0, allow_nan=False, allow_infinity=False),
+        ),
+        cache_write_time_ms=st.one_of(
+            st.none(),
+            st.floats(min_value=0.1, max_value=5000.0, allow_nan=False, allow_infinity=False),
+        ),
+        cache_hit=hit_strategy,
+        similarity_score=st.one_of(
+            st.none(),
+            st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        ),
+    )
+
+
+class TestProperty9CacheStatsCalculationAccuracy:
+    """Property 9: キャッシュ統計算出の正確性.
+
+    任意の10件以上の SearchMetrics リストに対して、算出されるキャッシュヒット率は
+    (ヒット数 / 総数) * 100 と等しく、平均レイテンシ削減率は
+    (1 - ヒット時平均レイテンシ / ミス時平均レイテンシ) * 100 と等しいこと。
+
+    **Validates: Requirements 6.4**
+    Feature: semantic-cache, Property 9: キャッシュ統計算出の正確性
+    """
+
+    @given(
+        metrics_list=st.lists(
+            search_metrics_strategy(),
+            min_size=10,
+            max_size=100,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_hit_rate_percent_equals_hits_over_total_times_100(
+        self, metrics_list: list[object]
+    ) -> None:
+        """キャッシュヒット率が (ヒット数 / 総数) * 100 と等しいこと."""
+        stats = calculate_cache_stats(metrics_list)
+
+        total = len(metrics_list)
+        hits = sum(1 for m in metrics_list if m.cache_hit)
+
+        expected_hit_rate = (hits / total) * 100
+        assert stats.hit_rate_percent == pytest.approx(expected_hit_rate)
+
+    @given(
+        hit_metrics=st.lists(
+            search_metrics_strategy(cache_hit=True),
+            min_size=1,
+            max_size=50,
+        ),
+        miss_metrics=st.lists(
+            search_metrics_strategy(cache_hit=False),
+            min_size=1,
+            max_size=50,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_latency_reduction_percent_when_both_hits_and_misses_exist(
+        self, hit_metrics: list[object], miss_metrics: list[object]
+    ) -> None:
+        """ヒットとミスが両方存在する場合、平均レイテンシ削減率が正しく算出されること."""
+        # 10件以上になるようにリストを結合
+        metrics_list = hit_metrics + miss_metrics
+        if len(metrics_list) < 10:
+            # 足りない分をミスで補完
+            additional = [
+                SearchMetrics(
+                    total_time_ms=100.0,
+                    embedding_time_ms=20.0,
+                    lookup_time_ms=5.0,
+                    search_time_ms=70.0,
+                    cache_write_time_ms=5.0,
+                    cache_hit=False,
+                    similarity_score=0.5,
+                )
+                for _ in range(10 - len(metrics_list))
+            ]
+            metrics_list = metrics_list + additional
+
+        stats = calculate_cache_stats(metrics_list)
+
+        # 手動で期待値を算出
+        hits = [m for m in metrics_list if m.cache_hit]
+        misses = [m for m in metrics_list if not m.cache_hit]
+
+        avg_hit_latency = sum(m.total_time_ms for m in hits) / len(hits)
+        avg_miss_latency = sum(m.total_time_ms for m in misses) / len(misses)
+
+        expected_reduction = (1 - avg_hit_latency / avg_miss_latency) * 100
+
+        assert stats.latency_reduction_percent == pytest.approx(expected_reduction)
+
+    @given(
+        metrics_list=st.lists(
+            search_metrics_strategy(),
+            min_size=10,
+            max_size=100,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_total_requests_equals_list_length(
+        self, metrics_list: list[object]
+    ) -> None:
+        """total_requests がリストの長さと等しいこと."""
+        stats = calculate_cache_stats(metrics_list)
+        assert stats.total_requests == len(metrics_list)
+
+    @given(
+        metrics_list=st.lists(
+            search_metrics_strategy(),
+            min_size=10,
+            max_size=100,
+        ),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_hits_plus_misses_equals_total(
+        self, metrics_list: list[object]
+    ) -> None:
+        """cache_hits + cache_misses が total_requests と等しいこと."""
+        stats = calculate_cache_stats(metrics_list)
+        assert stats.cache_hits + stats.cache_misses == stats.total_requests
