@@ -39,6 +39,5 @@ htmlcov/
 # Environment
 .env
 .env.local
-.kiro/settings/mcp.json
 
 results/*
