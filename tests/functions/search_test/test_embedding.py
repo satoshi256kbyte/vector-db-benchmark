@@ -1,4 +1,4 @@
-"""Embedding 生成モジュールのユニットテスト."""
+"""Embedding 生成モジュールのユニットテスト・プロパティテスト."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from botocore.exceptions import ClientError, ReadTimeoutError
 
 from embedding import EmbeddingError, EmbeddingResult, generate_embedding
@@ -91,3 +94,51 @@ class TestGenerateEmbedding:
 
         with pytest.raises(EmbeddingError, match="予期しないエラー"):
             generate_embedding("テスト入力")
+
+
+# ---------------------------------------------------------------------------
+# Property 4: Embedding入力バリデーション
+# Feature: semantic-cache, Property 4: Embedding入力バリデーション
+# Validates: Requirements 3.2
+# ---------------------------------------------------------------------------
+
+# 空文字列・空白のみ文字列を生成するストラテジー
+_whitespace_chars = " \t\n\r\x0b\x0c"
+_empty_or_whitespace_strategy = st.one_of(
+    st.just(""),
+    st.text(alphabet=_whitespace_chars, min_size=1, max_size=100).filter(lambda s: not s.strip()),
+)
+
+
+class TestEmbeddingInputValidationProperty:
+    """Property 4: Embedding入力バリデーション.
+
+    任意の空文字列に対して、embedding 生成は実行されずバリデーションエラーが返されること。
+    """
+
+    @given(text=_empty_or_whitespace_strategy)
+    @settings(max_examples=100)
+    def test_empty_or_whitespace_raises_value_error(self, text: str) -> None:
+        """任意の空文字列・空白のみ文字列で ValueError が発生すること.
+
+        Feature: semantic-cache, Property 4: Embedding入力バリデーション
+        Validates: Requirements 3.2
+        """
+        with pytest.raises(ValueError, match="入力テキストが空です"):
+            generate_embedding(text)
+
+    @given(text=_empty_or_whitespace_strategy)
+    @settings(max_examples=100)
+    @patch("embedding._get_bedrock_client")
+    def test_bedrock_client_not_called_for_empty_input(
+        self, mock_get_client: MagicMock, text: str
+    ) -> None:
+        """任意の空文字列・空白のみ文字列で Bedrock クライアントが呼ばれないこと.
+
+        Feature: semantic-cache, Property 4: Embedding入力バリデーション
+        Validates: Requirements 3.2
+        """
+        with pytest.raises(ValueError, match="入力テキストが空です"):
+            generate_embedding(text)
+
+        mock_get_client.assert_not_called()
